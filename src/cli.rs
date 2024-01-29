@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser, Clone)]
+/// {n} A simple tool to interact with the XDG trashcan on linux{n}{n}
+/// https://github.com/PotatoMaaan/simple-trash-cli
 pub struct Args {
     #[command(subcommand)]
     pub subcommand: Commands,
