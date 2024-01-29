@@ -16,7 +16,8 @@ mod trashinfo;
 #[cfg(test)]
 mod test;
 
-/// Based on `The FreeDesktop.org Trash specification`: https://specifications.freedesktop.org/trash-spec/trashspec-latest.html at 2024-01-22
+/// Based on `The FreeDesktop.org Trash specification`:
+/// https://specifications.freedesktop.org/trash-spec/trashspec-latest.html at 2024-01-22
 fn main() -> anyhow::Result<()> {
     let args = cli::Args::parse();
 

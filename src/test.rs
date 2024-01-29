@@ -1,8 +1,5 @@
-use std::{path::Path, str::FromStr};
-
-use chrono::Local;
-
 use crate::trashinfo::*;
+use std::{path::Path, str::FromStr};
 
 #[test]
 fn test_trashinfo_parse1() {
