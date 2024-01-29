@@ -1,4 +1,6 @@
-use std::path::Path;
+use std::{path::Path, str::FromStr};
+
+use chrono::Local;
 
 use crate::trashinfo::*;
 
@@ -9,9 +11,9 @@ fn test_trashinfo_parse1() {
     assert_eq!(
         ti,
         Trashinfo {
-            trash_filename: todo!(),
-            deleted_at: todo!(),
-            original_filepath: todo!()
+            trash_filename: "testfile1.txt".into(),
+            deleted_at: chrono::NaiveDateTime::from_str("2004-08-31T22:32:08").unwrap(),
+            original_filepath: "foo/bar/meow.bow-wow".into()
         }
     );
 }
@@ -23,23 +25,22 @@ fn test_trashinfo_parse2() {
     assert_eq!(
         ti,
         Trashinfo {
-            trash_filename: todo!(),
-            deleted_at: todo!(),
-            original_filepath: todo!()
+            trash_filename: "testfile2.txt".into(),
+            deleted_at: chrono::NaiveDateTime::from_str("2024-01-22T14:03:15").unwrap(),
+            original_filepath: "/home/user/Documents/files/more_files/test.rs".into()
         }
     );
 }
 
-// #[test]
-// fn test_trashinfo_parse3() {
-//     let ti = parse_trashinfo(Path::new("tests/test file 3.trashinfo")).unwrap();
-
-//     assert_eq!(
-//         ti,
-//         Trashinfo {
-//             file: PathBuf::from("test file 3"),
-//             deleted_at: "1990-01-12T17:17:40".to_owned(),
-//             original_filepath: PathBuf::from("/home/user/testdir/file containing spaces v2.10"),
-//         }
-//     );
-// }
+#[test]
+fn test_trashinfo_parse3() {
+    let ti = parse_trashinfo(Path::new("tests/test file 3.trashinfo")).unwrap();
+    assert_eq!(
+        ti,
+        Trashinfo {
+            trash_filename: "test file 3".into(),
+            deleted_at: chrono::NaiveDateTime::from_str("1990-01-12T17:17:40").unwrap(),
+            original_filepath: "/home/user/testdir/file containing spaces v2.10".into()
+        }
+    );
+}
