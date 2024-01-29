@@ -33,6 +33,14 @@ cargo build --release #builds an optimized binary
 
 The binary will be in `target/release`
 
+### Testing
+
+In order to run the tests, just run
+
+```
+cargo test
+```
+
 # Usage
 
 Here is a list of available subcommands
