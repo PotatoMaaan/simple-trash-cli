@@ -51,6 +51,13 @@ impl UnifiedTrash {
                 let info = info.context("Failed to get dir entry")?;
                 let info = trashinfo::parse_trashinfo(&info.path(), &trash.dev_root)
                     .context("Failed to parse dir entry")?;
+
+                if !trash.files().join(&info.trash_filename).exists() {
+                    eprintln!(
+                        "Warn: orphaned trashinfo: {}",
+                        trash.files().join(&info.trash_filename).display()
+                    )
+                }
                 parsed.push(info);
             }
         }
@@ -85,10 +92,6 @@ impl Trash {
     pub fn info(&self) -> PathBuf {
         self.trash_path.join("info")
     }
-}
-
-fn build_uid_trash_name(real_uid: u32) -> OsString {
-    format!(".Trash-{}", real_uid).into()
 }
 
 /// Panics if /proc/mounts has unexpected format.
