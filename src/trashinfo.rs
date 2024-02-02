@@ -31,35 +31,37 @@ impl Trashinfo {
         format!(
             "[Trash Info]\nPath={}\nDeletionDate={}",
             encoded,
-            // The same format that nautilus uses. The spec claims rfc3339, but that does not work on so many levels
+            // The same format that nautilus and dolphin use. The spec claims rfc3339, but that doesn't work out at all...
             self.deleted_at.format("%Y-%m-%dT%H:%M:%S")
         )
     }
 }
 
-pub fn parse_trashinfo(location: &Path) -> anyhow::Result<Trashinfo> {
+/// location: Path of the .trashinfo file
+/// dev_root: Path where the trash dir is inside, not the path of the actual trash dir!
+pub fn parse_trashinfo(location: &Path, dev_root: &Path) -> anyhow::Result<Trashinfo> {
     let file = fs::read_to_string(location)
         .context("Failed reading trashinfo file, this is probably a bug")?;
     let mut lines = file.lines();
 
-    // >Its first line must be [Trash Info].
+    // Its first line must be [Trash Info].
     if lines.next().context("no first line")? != "[Trash Info]" {
         anyhow::bail!("invalid first line");
     }
 
-    fn parse_line(line: &str) -> Option<(&str, &str)> {
+    fn parse_line(line: &str) -> anyhow::Result<(&str, &str)> {
         let mut line = line.split("=");
-        let key = line.next().context("No key").ok()?;
-        let val = line.next().context("No Value").ok()?;
+        let key = line.next().context("No key")?;
+        let val = line.next().context("No Value")?;
 
-        Some((key, val))
+        Ok((key, val))
     }
 
     // The implementation MUST ignore any other lines in this file, except the first line (must be [Trash Info]) and these two key/value pairs.
     // If a string that starts with “Path=” or “DeletionDate=” occurs several times, the first occurence is to be used
     let lines = lines
         .map(parse_line)
-        .collect::<Option<FxHashMap<&str, &str>>>()
+        .collect::<anyhow::Result<FxHashMap<&str, &str>>>()
         .context("invalid line (s)")?;
 
     let path = *lines.get("Path").context("no Path entry")?;
@@ -70,15 +72,22 @@ pub fn parse_trashinfo(location: &Path) -> anyhow::Result<Trashinfo> {
     let path = OsStr::from_bytes(&path);
     let path = Path::new(path);
 
+    // if the found path is relative, it's based on the dev_root
+    let path = if path.is_relative() {
+        dev_root.join(path)
+    } else {
+        path.to_path_buf()
+    };
+
     let deleted_at = *lines.get("DeletionDate").context("No DeletionDate entry")?;
 
-    /// This covers most real-world
+    /// This covers most real-world cases
     fn parser1(input: &str) -> Result<NaiveDateTime, chrono::ParseError> {
         chrono::NaiveDateTime::from_str(&input)
     }
 
     /// According to the spec, the datetime should be rfc3339, but i've not found a single real example that actually works here
-    /// Even the provided sample time does not parse with this.
+    /// Even the provided sample time in the spec does not parse with this.
     fn parser2(input: &str) -> Result<NaiveDateTime, chrono::ParseError> {
         chrono::DateTime::parse_from_rfc3339(&input).map(|x| x.naive_local())
     }
@@ -93,6 +102,7 @@ pub fn parse_trashinfo(location: &Path) -> anyhow::Result<Trashinfo> {
         chrono::DateTime::parse_from_rfc2822(&input).map(|x| x.naive_local())
     }
 
+    // probably horribly over complicated, but i really wanted to get the errors from each parser
     let (oks, errs) = [parser1, parser2, parser3, parser4]
         .into_iter()
         .map(|f| f(deleted_at))
@@ -109,7 +119,7 @@ pub fn parse_trashinfo(location: &Path) -> anyhow::Result<Trashinfo> {
             (oks, errs)
         });
 
-    let parsed = oks
+    let parsed_datetime = oks
         .first()
         .ok_or_else(|| {
             anyhow::anyhow!(
@@ -120,11 +130,9 @@ pub fn parse_trashinfo(location: &Path) -> anyhow::Result<Trashinfo> {
         .context("invalid datetime")?
         .to_owned();
 
-    let info = Trashinfo {
+    Ok(Trashinfo {
         trash_filename: location.file_stem().context("no file name")?.into(),
-        deleted_at: parsed,
+        deleted_at: parsed_datetime,
         original_filepath: path.to_path_buf(),
-    };
-
-    Ok(info)
+    })
 }

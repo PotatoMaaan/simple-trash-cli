@@ -12,12 +12,14 @@ use trashinfo::Trashinfo;
 
 mod cli;
 mod trashinfo;
+mod unified_trash;
 
 #[cfg(test)]
 mod test;
 
 /// Based on `The FreeDesktop.org Trash specification`:
 /// https://specifications.freedesktop.org/trash-spec/trashspec-latest.html at 2024-01-22
+#[cfg(target_os = "linux")]
 fn main() -> anyhow::Result<()> {
     let args = cli::Args::parse();
 
@@ -67,6 +69,13 @@ fn main() -> anyhow::Result<()> {
                         .open(info_dir.join(&new_info.trash_filename.with_extension("trashinfo")))
                     {
                         Ok(mut handle) => {
+                            // see commit 8ece2de964c01b3428f16766f199b58f0bc67212 in glib
+                            // or https://bugzilla.gnome.org/show_bug.cgi?id=749314.
+                            // or glib/gio/glocalfile.c:2259 pinned at 8afefe963d2b84004f77ef18fa1c01c8d22a8875
+                            //
+                            // while researching i came across this, not sure if it's relevant for things
+                            // outside of gtk (us), but we'll of course write out the file first.
+
                             let info_file = new_info.to_trashinfo_file();
                             handle
                                 .write_all(info_file.as_bytes())
@@ -215,7 +224,7 @@ fn parse_info_dir(info_dir: &Path) -> Result<Vec<Trashinfo>, anyhow::Error> {
     let mut parsed_info = vec![];
     for info in infos {
         let info = info.context("Failed to get dir entry")?;
-        let info = trashinfo::parse_trashinfo(&info.path()).context(format!(
+        let info = trashinfo::parse_trashinfo(&info.path(), todo!()).context(format!(
             "Failed to parse info file at {}",
             info.path().display()
         ))?;

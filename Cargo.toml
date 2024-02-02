@@ -9,6 +9,7 @@ edition = "2021"
 anyhow = { version = "1.0.79", features = ["backtrace"] }
 chrono = "0.4.31"
 clap = { version = "4.4.18", features = ["derive"] }
+libc = "0.2.153"
 rustc-hash = "1.1.0"
 urlencoding = "2.1.3"
 
