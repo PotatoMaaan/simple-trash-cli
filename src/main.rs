@@ -30,7 +30,6 @@ fn main() -> anyhow::Result<()> {
     match args.subcommand {
         cli::Commands::Put { files } => {
             trash.put(&files).unwrap();
-            todo!()
         }
         cli::Commands::Restore { orig_path, force } => {
             todo!()
@@ -43,7 +42,6 @@ fn main() -> anyhow::Result<()> {
                     f.original_filepath.display()
                 );
             }
-            todo!()
         }
         cli::Commands::Clear => {
             todo!()

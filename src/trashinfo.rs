@@ -26,14 +26,29 @@ pub struct Trashinfo {
 }
 
 impl Trashinfo {
-    pub fn to_trashinfo_file(&self) -> String {
-        let encoded = urlencoding::encode_binary(self.original_filepath.as_os_str().as_bytes());
+    pub fn trashinfo_file(&self) -> String {
+        self.create_trashfile(&self.original_filepath)
+    }
+
+    fn create_trashfile(&self, orig_filepath: &Path) -> String {
+        let encoded = urlencoding::encode_binary(orig_filepath.as_os_str().as_bytes());
         format!(
             "[Trash Info]\nPath={}\nDeletionDate={}",
             encoded,
             // The same format that nautilus and dolphin use. The spec claims rfc3339, but that doesn't work out at all...
             self.deleted_at.format("%Y-%m-%dT%H:%M:%S")
         )
+    }
+
+    pub fn trashinfo_file_relative(&self, relative_to: &Path) -> anyhow::Result<String> {
+        let relative_path = self
+            .original_filepath
+            .strip_prefix(relative_to)
+            .context("Failed to strip prefix")?;
+
+        assert!(relative_path.is_relative());
+
+        Ok(self.create_trashfile(relative_path))
     }
 }
 
@@ -42,6 +57,7 @@ impl Trashinfo {
 pub fn parse_trashinfo(location: &Path, dev_root: &Path) -> anyhow::Result<Trashinfo> {
     let file = fs::read_to_string(location)
         .context("Failed reading trashinfo file, this is probably a bug")?;
+
     let mut lines = file.lines();
 
     // Its first line must be [Trash Info].

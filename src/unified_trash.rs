@@ -1,18 +1,16 @@
+use crate::trashinfo::{self, Trashinfo};
+use anyhow::Context;
 use std::{
     env,
     ffi::{OsStr, OsString},
-    fs::{self, File, OpenOptions},
-    io::{self, Write},
+    fs::{self, OpenOptions},
+    io::Write,
     os::unix::{
         ffi::OsStrExt,
         fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     },
     path::{Path, PathBuf},
 };
-
-use anyhow::Context;
-
-use crate::trashinfo::{self, Trashinfo};
 
 #[derive(Debug)]
 pub struct UnifiedTrash {
@@ -31,6 +29,8 @@ impl UnifiedTrash {
             xdg_data_dir.join("Trash"),
             xdg_data_dir,
             xdg_data_dir_meta.dev(),
+            true,
+            false,
         )
         .context("Failed to get home trash dir")?;
 
@@ -38,6 +38,10 @@ impl UnifiedTrash {
         let mut trashes =
             get_trash_dirs_from_mounts(real_uid).context("Failed to get trash dirs")?;
         trashes.insert(0, home_trash.clone());
+
+        // ensure that admin created trash dirs take priority
+        // yes b and a need to be swapped for this to be the proper way round
+        trashes.sort_by(|a, b| b.is_admin_trash.cmp(&a.is_admin_trash));
 
         Ok(Self {
             trashes,
@@ -48,17 +52,19 @@ impl UnifiedTrash {
     pub fn list(&self) -> anyhow::Result<Vec<Trashinfo>> {
         let mut parsed = vec![];
         for trash in &self.trashes {
-            for info in fs::read_dir(trash.info()).context("Failed to read info dir")? {
+            for info in fs::read_dir(trash.info_dir()).context("Failed to read info dir")? {
                 let info = info.context("Failed to get dir entry")?;
                 let info = trashinfo::parse_trashinfo(&info.path(), &trash.dev_root)
                     .context("Failed to parse dir entry")?;
 
-                if !trash.files().join(&info.trash_filename).exists() {
+                if !trash.files_dir().join(&info.trash_filename).exists() {
                     eprintln!(
                         "Warn: orphaned trashinfo: {}",
-                        trash.files().join(&info.trash_filename).display()
-                    )
+                        trash.files_dir().join(&info.trash_filename).display()
+                    );
+                    continue;
                 }
+
                 parsed.push(info);
             }
         }
@@ -76,9 +82,10 @@ impl UnifiedTrash {
                     "Warn: trashing in system path {} is not supported.",
                     input_file.display()
                 );
+                continue;
             }
 
-            let mut new_info = Trashinfo {
+            let mut newfile_info = Trashinfo {
                 trash_filename: input_file
                     .file_name()
                     .context("File has no filename")?
@@ -89,79 +96,70 @@ impl UnifiedTrash {
                     .context("Failed to resolve path")?,
             };
 
-            // We continue appending the current number of iterations to the filename until
-            // such a file no longer exists in any of the trash locations.
-            let mut iters = 0;
-            let mut successful_locks = loop {
-                iters += 1;
+            let trashed_files = self.list().context("Failed to list trash")?;
 
-                let attempted_writes = self
-                    .trashes
+            for iterations in 1.. {
+                if trashed_files
                     .iter()
-                    .map(|trash| trash.try_lock_file(&new_info))
-                    .collect::<Vec<_>>();
+                    .any(|x| x.trash_filename == newfile_info.trash_filename)
+                {
+                    let mut name_changed =
+                        newfile_info.trash_filename.clone().as_os_str().to_owned();
+                    name_changed.push(OsString::from(iterations.to_string()));
 
-                if attempted_writes.iter().any(already_exists) {
-                    let mut name_changed = new_info.trash_filename.as_os_str().to_owned();
-                    name_changed.push(OsString::from(iters.to_string()));
-
-                    new_info.trash_filename.set_file_name(name_changed);
+                    newfile_info.trash_filename.set_file_name(name_changed);
                     continue;
                 } else {
-                    break attempted_writes
-                        .into_iter()
-                        .filter_map(Result::ok)
-                        .collect::<Vec<_>>();
+                    break;
                 }
-            };
-
-            // The input is on the same device as the home trash, so that one takes priority
-            if input_file_meta.dev() == self.home_trash.device {
-                let home_trash_index = successful_locks
-                    .iter()
-                    .position(|info| info.trash == self.home_trash)
-                    .context("File on same device as home trash dir, but the home trash could not be opened")?;
-
-                let locked = successful_locks.remove(home_trash_index);
-
-                write_trash(locked, input_file).context("Failed to write to trash")?;
-                println!("trashed {}", input_file.display());
-                continue;
             }
 
-            // At this point the home trash is already handled and we are on a different device
+            // At this point we have a unique name
 
-            let device_trash = if let Some(idx) = successful_locks
-                .iter()
-                .position(|lock| lock.trash.device == input_file_meta.dev())
-            {
-                successful_locks.remove(idx)
+            if input_file_meta.dev() == self.home_trash.device {
+                // input is on the same device as the home trash, so we use that.
+                self.home_trash
+                    .write(&newfile_info)
+                    .context("Failed to write to home trash")?;
             } else {
-                // A trash dir does not exist on the mount, so we try to create one.
+                let existing_trash = self
+                    .trashes
+                    .iter()
+                    .find(|x| x.device == input_file_meta.dev());
 
-                let mounts = list_mounts().context("Failed to list mounts")?;
-                let fs_root = find_fs_root(&input_file).context("Failed to find mount point")?;
+                if let Some(existing_trash) = existing_trash {
+                    // We already have a trash on the device, so we use it
+                    existing_trash
+                        .write(&newfile_info)
+                        .context("Failed to write to trash")?;
+                } else {
+                    // We don't have a trash on this device, so we create one
+                    let mounts = list_mounts().context("Failed to list mounts")?;
+                    let fs_root =
+                        find_fs_root(&input_file).context("Failed to find mount point")?;
 
-                assert!(mounts.contains(&fs_root), "oh nein");
+                    assert!(mounts.contains(&fs_root), "oh nein");
 
-                let fs_root_meta = fs::metadata(&fs_root).context("Failed to stat mount")?;
-                let trash_name = format!(".Trash-{}", unsafe { libc::getuid() });
-                let trash = Trash::new_with_ensure(
-                    fs_root.join(trash_name),
-                    fs_root.clone(),
-                    fs_root_meta.dev(),
-                )
-                .context(format!(
-                    "Failed to create trash dir on moun: {}",
-                    &fs_root.display()
-                ))?;
+                    let fs_root_meta = fs::metadata(&fs_root).context("Failed to stat mount")?;
+                    let trash_name = format!(".Trash-{}", unsafe { libc::getuid() });
+                    let trash = Trash::new_with_ensure(
+                        fs_root.join(trash_name),
+                        fs_root.clone(),
+                        fs_root_meta.dev(),
+                        false,
+                        false,
+                    )
+                    .context(format!(
+                        "Failed to create trash dir on mount: {}",
+                        &fs_root.display()
+                    ))?;
 
-                trash
-                    .try_lock_file(&new_info)
-                    .context("Failed to lock file")?
-            };
+                    trash
+                        .write(&newfile_info)
+                        .context("Failed writing to trash")?;
+                }
+            }
 
-            write_trash(device_trash, &input_file).context("Failed to write to trash")?;
             println!("trashed {}", input_file.display());
         }
 
@@ -171,54 +169,22 @@ impl UnifiedTrash {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Trash {
+    is_home_trash: bool,
+    is_admin_trash: bool,
     dev_root: PathBuf,
     trash_path: PathBuf,
     device: u64,
 }
 
-fn already_exists(res: &io::Result<LockedTrashinfo>) -> bool {
-    match res {
-        Ok(_) => false,
-        Err(e) => match e.kind() {
-            io::ErrorKind::AlreadyExists => true,
-            _ => false,
-        },
-    }
-}
-
-#[derive(Debug)]
-struct LockedTrashinfo {
-    handle: File,
-    info: Trashinfo,
-    trash: Trash,
-}
-
-fn write_trash(mut lock: LockedTrashinfo, move_file: &Path) -> anyhow::Result<()> {
-    let info_file = lock.info.to_trashinfo_file();
-    lock.handle
-        .write(info_file.as_bytes())
-        .context("Failed to write info file")?;
-
-    match fs::rename(
-        move_file,
-        lock.trash.files().join(&lock.info.trash_filename),
-    )
-    .context("Failed to move file to trash")
-    {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            eprintln!("Err: Failed to move file to trash: {}", e);
-            eprintln!("Attempting to remove info file...");
-            fs::remove_file(lock.trash.info().join(&lock.info.trash_filename))
-                .expect("Failed to remove just created info file");
-
-            Err(e)
-        }
-    }
-}
-
 impl Trash {
-    pub fn new_with_ensure(path: PathBuf, dev_root: PathBuf, device: u64) -> anyhow::Result<Self> {
+    #[must_use]
+    pub fn new_with_ensure(
+        path: PathBuf,
+        dev_root: PathBuf,
+        device: u64,
+        is_home_trash: bool,
+        is_admin_trash: bool,
+    ) -> anyhow::Result<Self> {
         fs::create_dir_all(path.join("files")).context("Failed to create files dir")?;
         fs::create_dir_all(path.join("info")).context("Failed to create info dir")?;
 
@@ -226,35 +192,75 @@ impl Trash {
             trash_path: path,
             device,
             dev_root,
+            is_home_trash,
+            is_admin_trash,
         })
     }
 
-    pub fn try_lock_file(&self, info: &Trashinfo) -> io::Result<LockedTrashinfo> {
-        OpenOptions::new()
+    #[must_use]
+    fn write(&self, info: &Trashinfo) -> anyhow::Result<()> {
+        let mut f = info
+            .trash_filename
+            .file_name()
+            .context("Has no filename")?
+            .to_os_string();
+        f.push(".trashinfo");
+
+        let full_infoname = self.info_dir().join(f);
+
+        let mut info_file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .mode(0o600)
-            .open(
-                self.info()
-                    .join(info.trash_filename.with_extension("trashinfo")),
-            )
-            .map(|x| LockedTrashinfo {
-                handle: x,
-                info: info.clone(),
-                trash: self.clone(),
-            })
+            .open(full_infoname)
+            .context("Failed to open info file")?;
+
+        let trashinfo_file = if self.is_home_trash {
+            info.trashinfo_file()
+        } else {
+            info.trashinfo_file_relative(&self.dev_root)
+                .context("Failed to build relative path")?
+        };
+
+        info_file
+            .write_all(trashinfo_file.as_bytes())
+            .context("Failed to write to info file")?;
+
+        match fs::rename(
+            &info.original_filepath,
+            self.files_dir().join(&info.trash_filename),
+        )
+        .context("Failed to move file")
+        {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                eprintln!(
+                    "Error: Failed moving file {}, reverting info file...",
+                    info.original_filepath.display()
+                );
+                fs::remove_file(
+                    self.info_dir()
+                        .join(&info.trash_filename)
+                        .with_extension("trashinfo"),
+                )
+                .context("Failed to remove existing info file")?;
+
+                Err(e)
+            }
+        }
     }
 
-    pub fn files(&self) -> PathBuf {
+    pub fn files_dir(&self) -> PathBuf {
         self.trash_path.join("files")
     }
 
-    pub fn info(&self) -> PathBuf {
+    pub fn info_dir(&self) -> PathBuf {
         self.trash_path.join("info")
     }
 }
 
 /// Panics if /proc/mounts has unexpected format.
+#[must_use]
 fn get_trash_dirs_from_mounts(uid: u32) -> anyhow::Result<Vec<Trash>> {
     let top_dirs = list_mounts().context("Failed to list mounts")?;
 
@@ -265,6 +271,7 @@ fn get_trash_dirs_from_mounts(uid: u32) -> anyhow::Result<Vec<Trash>> {
 
         // the admin dir exists
         if let Ok(admin_dir_meta) = fs::metadata(&admin_dir) {
+            let mut checks_passed = false;
             // the sticky bit is set (required according to spec)
             if admin_dir_meta.permissions().mode() & 0o1000 != 0 {
                 // the admin dir is not a symlink (also required)
@@ -278,28 +285,35 @@ fn get_trash_dirs_from_mounts(uid: u32) -> anyhow::Result<Vec<Trash>> {
                             admin_uid_dir,
                             top_dir.clone(),
                             admin_dir_meta.dev(),
+                            false,
+                            true,
                         );
                         if let Ok(new_trash) = new_trash {
                             trash_dirs.push(new_trash);
-                            continue;
+                            checks_passed = true;
+                            // we intentionally don't `continue` here, since both admin and uid
+                            // trash dirs should be supported at once.
                         }
                     }
                 }
             }
 
-            eprintln!(
-                "Warn: {} does not pass checks, ignoring",
-                admin_dir.display()
-            )
+            if !checks_passed {
+                eprintln!(
+                    "Warn: {} does not pass checks, ignoring",
+                    admin_dir.display()
+                )
+            }
         };
 
-        // At this point the admin dir does not exist or failed the checks
-        // so we continue with $top_dir/.Trash-$uid or, as we will call it, the uid_dir
+        // we continue with $top_dir/.Trash-$uid or, as we will call it, the uid_dir
 
         let uid_dir = top_dir.join(format!(".Trash-{uid}"));
 
         if let Ok(uid_dir_meta) = fs::metadata(&uid_dir) {
-            if let Ok(new_trash) = Trash::new_with_ensure(uid_dir, top_dir, uid_dir_meta.dev()) {
+            if let Ok(new_trash) =
+                Trash::new_with_ensure(uid_dir, top_dir, uid_dir_meta.dev(), false, false)
+            {
                 trash_dirs.push(new_trash);
             }
         }
@@ -308,6 +322,7 @@ fn get_trash_dirs_from_mounts(uid: u32) -> anyhow::Result<Vec<Trash>> {
     Ok(trash_dirs)
 }
 
+#[must_use]
 fn list_mounts() -> Result<Vec<PathBuf>, anyhow::Error> {
     Ok(fs::read("/proc/mounts")
         .context("Failed to read /proc/mounts, are you perhaps not running linux?")?
@@ -319,8 +334,13 @@ fn list_mounts() -> Result<Vec<PathBuf>, anyhow::Error> {
         .collect())
 }
 
+#[must_use]
 fn is_sys_path(path: &Path) -> anyhow::Result<bool> {
     let path = path.canonicalize().context("Failed to resolve path")?;
+
+    if path == PathBuf::from("/") {
+        return Ok(true);
+    }
 
     let first_component = path
         .components()
@@ -341,6 +361,7 @@ fn is_sys_path(path: &Path) -> anyhow::Result<bool> {
     )
 }
 
+#[must_use]
 fn find_fs_root(path: &Path) -> anyhow::Result<PathBuf> {
     let path = path.canonicalize().context("Failed to resolve path")?;
     let root_dev = fs::metadata(&path).context("Failed to get metadata")?.dev();
