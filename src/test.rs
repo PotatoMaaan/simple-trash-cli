@@ -1,4 +1,5 @@
 use crate::trashinfo::*;
+use crate::unified_trash::UnifiedTrash;
 use std::{path::Path, str::FromStr};
 
 // #[test]
@@ -41,3 +42,35 @@ use std::{path::Path, str::FromStr};
 //         }
 //     );
 // }
+
+use std::{path::PathBuf, process::Command};
+
+#[test]
+fn me_when() {
+    let trash = UnifiedTrash::new().unwrap();
+
+    let gio_output = Command::new("gio")
+        .arg("trash")
+        .arg("--list")
+        .output()
+        .unwrap()
+        .stdout;
+    let gio_output = String::from_utf8(gio_output).unwrap();
+    let mut gio_output = gio_output
+        .lines()
+        .map(|x| x.split("\t").skip(1).next().unwrap())
+        .map(PathBuf::from)
+        .collect::<Vec<_>>();
+
+    let mut our_output = trash
+        .list()
+        .unwrap()
+        .into_iter()
+        .map(|x| x.original_filepath)
+        .collect::<Vec<_>>();
+
+    our_output.sort();
+    gio_output.sort();
+
+    assert_eq!(our_output, gio_output);
+}

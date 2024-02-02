@@ -1,10 +1,11 @@
 use std::{
     env,
     ffi::{OsStr, OsString},
-    fs,
+    fs::{self, File, OpenOptions},
+    io::{self, Write},
     os::unix::{
         ffi::OsStrExt,
-        fs::{MetadataExt, PermissionsExt},
+        fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     },
     path::{Path, PathBuf},
 };
@@ -15,7 +16,7 @@ use crate::trashinfo::{self, Trashinfo};
 
 #[derive(Debug)]
 pub struct UnifiedTrash {
-    home_trash_dev: u64,
+    home_trash: Trash,
     trashes: Vec<Trash>,
 }
 
@@ -36,11 +37,11 @@ impl UnifiedTrash {
         let real_uid = unsafe { libc::getuid() };
         let mut trashes =
             get_trash_dirs_from_mounts(real_uid).context("Failed to get trash dirs")?;
-        trashes.insert(0, home_trash);
+        trashes.insert(0, home_trash.clone());
 
         Ok(Self {
             trashes,
-            home_trash_dev: xdg_data_dir_meta.dev(),
+            home_trash,
         })
     }
 
@@ -64,13 +65,156 @@ impl UnifiedTrash {
 
         Ok(parsed)
     }
+
+    pub fn put(&self, input_files: &[PathBuf]) -> anyhow::Result<()> {
+        for input_file in input_files {
+            let input_file_meta = fs::metadata(&input_file)
+                .context(format!("Failed stat file: {}", input_file.display()))?;
+
+            if is_sys_path(&input_file).context("Failed to determine if path is system path")? {
+                eprintln!(
+                    "Warn: trashing in system path {} is not supported.",
+                    input_file.display()
+                );
+            }
+
+            let mut new_info = Trashinfo {
+                trash_filename: input_file
+                    .file_name()
+                    .context("File has no filename")?
+                    .into(),
+                deleted_at: chrono::Local::now().naive_local(),
+                original_filepath: input_file
+                    .canonicalize()
+                    .context("Failed to resolve path")?,
+            };
+
+            // We continue appending the current number of iterations to the filename until
+            // such a file no longer exists in any of the trash locations.
+            let mut iters = 0;
+            let mut successful_locks = loop {
+                iters += 1;
+
+                let attempted_writes = self
+                    .trashes
+                    .iter()
+                    .map(|trash| trash.try_lock_file(&new_info))
+                    .collect::<Vec<_>>();
+
+                if attempted_writes.iter().any(already_exists) {
+                    let mut name_changed = new_info.trash_filename.as_os_str().to_owned();
+                    name_changed.push(OsString::from(iters.to_string()));
+
+                    new_info.trash_filename.set_file_name(name_changed);
+                    continue;
+                } else {
+                    break attempted_writes
+                        .into_iter()
+                        .filter_map(Result::ok)
+                        .collect::<Vec<_>>();
+                }
+            };
+
+            // The input is on the same device as the home trash, so that one takes priority
+            if input_file_meta.dev() == self.home_trash.device {
+                let home_trash_index = successful_locks
+                    .iter()
+                    .position(|info| info.trash == self.home_trash)
+                    .context("File on same device as home trash dir, but the home trash could not be opened")?;
+
+                let locked = successful_locks.remove(home_trash_index);
+
+                write_trash(locked, input_file).context("Failed to write to trash")?;
+                println!("trashed {}", input_file.display());
+                continue;
+            }
+
+            // At this point the home trash is already handled and we are on a different device
+
+            let device_trash = if let Some(idx) = successful_locks
+                .iter()
+                .position(|lock| lock.trash.device == input_file_meta.dev())
+            {
+                successful_locks.remove(idx)
+            } else {
+                // A trash dir does not exist on the mount, so we try to create one.
+
+                let mounts = list_mounts().context("Failed to list mounts")?;
+                let fs_root = find_fs_root(&input_file).context("Failed to find mount point")?;
+
+                assert!(mounts.contains(&fs_root), "oh nein");
+
+                let fs_root_meta = fs::metadata(&fs_root).context("Failed to stat mount")?;
+                let trash_name = format!(".Trash-{}", unsafe { libc::getuid() });
+                let trash = Trash::new_with_ensure(
+                    fs_root.join(trash_name),
+                    fs_root.clone(),
+                    fs_root_meta.dev(),
+                )
+                .context(format!(
+                    "Failed to create trash dir on moun: {}",
+                    &fs_root.display()
+                ))?;
+
+                trash
+                    .try_lock_file(&new_info)
+                    .context("Failed to lock file")?
+            };
+
+            write_trash(device_trash, &input_file).context("Failed to write to trash")?;
+            println!("trashed {}", input_file.display());
+        }
+
+        Ok(())
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Trash {
     dev_root: PathBuf,
     trash_path: PathBuf,
     device: u64,
+}
+
+fn already_exists(res: &io::Result<LockedTrashinfo>) -> bool {
+    match res {
+        Ok(_) => false,
+        Err(e) => match e.kind() {
+            io::ErrorKind::AlreadyExists => true,
+            _ => false,
+        },
+    }
+}
+
+#[derive(Debug)]
+struct LockedTrashinfo {
+    handle: File,
+    info: Trashinfo,
+    trash: Trash,
+}
+
+fn write_trash(mut lock: LockedTrashinfo, move_file: &Path) -> anyhow::Result<()> {
+    let info_file = lock.info.to_trashinfo_file();
+    lock.handle
+        .write(info_file.as_bytes())
+        .context("Failed to write info file")?;
+
+    match fs::rename(
+        move_file,
+        lock.trash.files().join(&lock.info.trash_filename),
+    )
+    .context("Failed to move file to trash")
+    {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            eprintln!("Err: Failed to move file to trash: {}", e);
+            eprintln!("Attempting to remove info file...");
+            fs::remove_file(lock.trash.info().join(&lock.info.trash_filename))
+                .expect("Failed to remove just created info file");
+
+            Err(e)
+        }
+    }
 }
 
 impl Trash {
@@ -83,6 +227,22 @@ impl Trash {
             device,
             dev_root,
         })
+    }
+
+    pub fn try_lock_file(&self, info: &Trashinfo) -> io::Result<LockedTrashinfo> {
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(
+                self.info()
+                    .join(info.trash_filename.with_extension("trashinfo")),
+            )
+            .map(|x| LockedTrashinfo {
+                handle: x,
+                info: info.clone(),
+                trash: self.clone(),
+            })
     }
 
     pub fn files(&self) -> PathBuf {
@@ -159,38 +319,33 @@ fn list_mounts() -> Result<Vec<PathBuf>, anyhow::Error> {
         .collect())
 }
 
-#[cfg(test)]
-mod test {
-    use super::UnifiedTrash;
-    use std::{path::PathBuf, process::Command};
+fn is_sys_path(path: &Path) -> anyhow::Result<bool> {
+    let path = path.canonicalize().context("Failed to resolve path")?;
 
-    #[test]
-    fn me_when() {
-        let trash = UnifiedTrash::new().unwrap();
+    let first_component = path
+        .components()
+        .next()
+        .context("Path has no first element")?
+        .as_os_str();
 
-        let gio_output = Command::new("gio")
-            .arg("trash")
-            .arg("--list")
-            .output()
-            .unwrap()
-            .stdout;
-        let gio_output = String::from_utf8(gio_output).unwrap();
-        let mut gio_output = gio_output
-            .lines()
-            .map(|x| x.split("\t").skip(1).next().unwrap())
-            .map(PathBuf::from)
-            .collect::<Vec<_>>();
+    Ok(
+        match first_component.to_string_lossy().to_string().as_str() {
+            "boot" => true,
+            "dev" => true,
+            "proc" => true,
+            "lost+found" => true,
+            "sys" => true,
+            "tmp" => true,
+            _ => false,
+        },
+    )
+}
 
-        let mut our_output = trash
-            .list()
-            .unwrap()
-            .into_iter()
-            .map(|x| x.original_filepath)
-            .collect::<Vec<_>>();
-
-        our_output.sort();
-        gio_output.sort();
-
-        assert_eq!(our_output, gio_output);
-    }
+fn find_fs_root(path: &Path) -> anyhow::Result<PathBuf> {
+    let path = path.canonicalize().context("Failed to resolve path")?;
+    let root_dev = fs::metadata(&path).context("Failed to get metadata")?.dev();
+    Ok(path
+        .ancestors() // trust the metadata call won't fail
+        .take_while(|x| fs::metadata(x).unwrap().dev() == root_dev)
+        .collect())
 }
