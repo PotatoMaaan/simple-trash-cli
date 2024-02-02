@@ -1,4 +1,5 @@
 use std::{
+    env,
     ffi::{OsStr, OsString},
     fs,
     os::unix::{
@@ -14,17 +15,32 @@ use crate::trashinfo::{self, Trashinfo};
 
 #[derive(Debug)]
 pub struct UnifiedTrash {
+    home_trash_dev: u64,
     trashes: Vec<Trash>,
 }
 
 impl UnifiedTrash {
     pub fn new() -> anyhow::Result<Self> {
+        let home_dir = PathBuf::from(env::var("HOME").context("No home dir set!")?);
+        let xdg_data_dir = env::var("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .unwrap_or(home_dir.join(".local").join("share"));
+        let xdg_data_dir_meta = fs::metadata(&xdg_data_dir).context("Failed to get metadata")?;
+        let home_trash = Trash::new_with_ensure(
+            xdg_data_dir.join("Trash"),
+            xdg_data_dir,
+            xdg_data_dir_meta.dev(),
+        )
+        .context("Failed to get home trash dir")?;
+
         let real_uid = unsafe { libc::getuid() };
-        let mount_trashes =
+        let mut trashes =
             get_trash_dirs_from_mounts(real_uid).context("Failed to get trash dirs")?;
+        trashes.insert(0, home_trash);
 
         Ok(Self {
-            trashes: mount_trashes,
+            trashes,
+            home_trash_dev: xdg_data_dir_meta.dev(),
         })
     }
 
@@ -142,18 +158,36 @@ fn list_mounts() -> Result<Vec<PathBuf>, anyhow::Error> {
 
 #[cfg(test)]
 mod test {
-
-    use super::{get_trash_dirs_from_mounts, UnifiedTrash};
+    use super::UnifiedTrash;
+    use std::{path::PathBuf, process::Command};
 
     #[test]
     fn me_when() {
         let trash = UnifiedTrash::new().unwrap();
-        for p in trash.list().unwrap() {
-            println!(
-                "{}\t{}",
-                p.trash_filename.display(),
-                p.original_filepath.display()
-            );
-        }
+
+        let gio_output = Command::new("gio")
+            .arg("trash")
+            .arg("--list")
+            .output()
+            .unwrap()
+            .stdout;
+        let gio_output = String::from_utf8(gio_output).unwrap();
+        let mut gio_output = gio_output
+            .lines()
+            .map(|x| x.split("\t").skip(1).next().unwrap())
+            .map(PathBuf::from)
+            .collect::<Vec<_>>();
+
+        let mut our_output = trash
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|x| x.original_filepath)
+            .collect::<Vec<_>>();
+
+        our_output.sort();
+        gio_output.sort();
+
+        assert_eq!(our_output, gio_output);
     }
 }
