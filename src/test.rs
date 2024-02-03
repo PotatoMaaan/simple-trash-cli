@@ -1,5 +1,3 @@
-use crate::trashinfo::*;
-use crate::unified_trash::UnifiedTrash;
 use std::{path::Path, str::FromStr};
 
 // #[test]
@@ -44,6 +42,8 @@ use std::{path::Path, str::FromStr};
 // }
 
 use std::{path::PathBuf, process::Command};
+
+use crate::trashing::UnifiedTrash;
 
 #[test]
 fn me_when() {
