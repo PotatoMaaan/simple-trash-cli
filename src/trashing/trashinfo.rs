@@ -55,8 +55,7 @@ impl Trashinfo {
 /// location: Path of the .trashinfo file
 /// dev_root: Path where the trash dir is inside, not the path of the actual trash dir!
 pub fn parse_trashinfo(location: &Path, dev_root: &Path) -> anyhow::Result<Trashinfo> {
-    let file = fs::read_to_string(location)
-        .context("Failed reading trashinfo file, this is probably a bug")?;
+    let file = fs::read_to_string(location).context("Failed reading trashinfo file")?;
 
     let mut lines = file.lines();
 
@@ -151,4 +150,46 @@ pub fn parse_trashinfo(location: &Path, dev_root: &Path) -> anyhow::Result<Trash
         deleted_at: parsed_datetime,
         original_filepath: path.to_path_buf(),
     })
+}
+
+#[test]
+fn test_trashinfo_parse1() {
+    let ti = parse_trashinfo(Path::new("tests/testfile1.txt.trashinfo"), &Path::new("")).unwrap();
+
+    assert_eq!(
+        ti,
+        Trashinfo {
+            trash_filename: "testfile1.txt".into(),
+            deleted_at: chrono::NaiveDateTime::from_str("2004-08-31T22:32:08").unwrap(),
+            original_filepath: "foo/bar/meow.bow-wow".into()
+        }
+    );
+}
+
+#[test]
+fn test_trashinfo_parse2() {
+    let ti = parse_trashinfo(Path::new("tests/testfile2.txt.trashinfo"), &Path::new("")).unwrap();
+
+    assert_eq!(
+        ti,
+        Trashinfo {
+            trash_filename: "testfile2.txt".into(),
+            deleted_at: chrono::NaiveDateTime::from_str("2024-01-22T14:03:15").unwrap(),
+            original_filepath: "/home/user/Documents/files/more_files/test.rs".into()
+        }
+    );
+}
+
+#[test]
+fn test_trashinfo_parse3() {
+    let ti = parse_trashinfo(Path::new("tests/test file 3.trashinfo"), &Path::new("")).unwrap();
+
+    assert_eq!(
+        ti,
+        Trashinfo {
+            trash_filename: "test file 3".into(),
+            deleted_at: chrono::NaiveDateTime::from_str("1990-01-12T17:17:40").unwrap(),
+            original_filepath: "/home/user/testdir/file containing spaces v2.10".into()
+        }
+    );
 }

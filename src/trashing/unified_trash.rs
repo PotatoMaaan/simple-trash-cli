@@ -1,19 +1,15 @@
 use anyhow::Context;
 use std::{
-    env,
-    ffi::{OsStr, OsString},
-    fs::{self, OpenOptions},
-    io::Write,
-    os::unix::{
-        ffi::OsStrExt,
-        fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
-    },
-    path::{Path, PathBuf},
+    ffi::OsString,
+    fs::{self},
+    os::unix::fs::MetadataExt,
+    path::PathBuf,
 };
 
 use crate::trashing::{find_fs_root, is_sys_path, list_mounts};
 
 use super::{
+    find_home_trash,
     trash::Trash,
     trashinfo::{self, Trashinfo},
 };
@@ -26,19 +22,7 @@ pub struct UnifiedTrash {
 
 impl UnifiedTrash {
     pub fn new() -> anyhow::Result<Self> {
-        let home_dir = PathBuf::from(env::var("HOME").context("No home dir set!")?);
-        let xdg_data_dir = env::var("XDG_DATA_HOME")
-            .map(PathBuf::from)
-            .unwrap_or(home_dir.join(".local").join("share"));
-        let xdg_data_dir_meta = fs::metadata(&xdg_data_dir).context("Failed to get metadata")?;
-        let home_trash = Trash::new_with_ensure(
-            xdg_data_dir.join("Trash"),
-            xdg_data_dir,
-            xdg_data_dir_meta.dev(),
-            true,
-            false,
-        )
-        .context("Failed to get home trash dir")?;
+        let home_trash = find_home_trash().context("Failed to get home trash dir")?;
 
         let real_uid = unsafe { libc::getuid() };
         let mut trashes =
@@ -83,7 +67,7 @@ impl UnifiedTrash {
             let input_file_meta = fs::metadata(&input_file)
                 .context(format!("Failed stat file: {}", input_file.display()))?;
 
-            if is_sys_path(&input_file).context("Failed to determine if path is system path")? {
+            if is_sys_path(&input_file) {
                 eprintln!(
                     "Warn: trashing in system path {} is not supported.",
                     input_file.display()

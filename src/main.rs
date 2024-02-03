@@ -1,13 +1,4 @@
-use anyhow::Context;
 use clap::Parser;
-use std::{
-    env,
-    ffi::OsString,
-    fs::{self, OpenOptions},
-    io::{self, stdin, stdout, BufRead, Write},
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
-    path::{Path, PathBuf},
-};
 
 mod cli;
 mod trashing;
@@ -27,13 +18,13 @@ fn main() -> anyhow::Result<()> {
 
     match args.subcommand {
         cli::Commands::Put { files } => {
-            trash.put(&files).unwrap();
+            trash.put(&files)?;
         }
         cli::Commands::Restore { orig_path, force } => {
             todo!()
         }
         cli::Commands::List { simple } => {
-            for f in trash.list().unwrap() {
+            for f in trash.list()? {
                 println!(
                     "{} -> {}",
                     f.trash_filename.display(),
@@ -50,10 +41,4 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn ask(txt: &str) -> Option<String> {
-    print!("{}", txt);
-    stdout().flush().expect("Failed to flush stdout");
-    stdin().lock().lines().next()?.ok()
 }
