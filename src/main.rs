@@ -1,6 +1,13 @@
+use anyhow::Context;
 use clap::Parser;
+use std::env;
+use std::path::PathBuf;
+use trashing::UnifiedTrash;
 
 mod cli;
+mod commands;
+mod microlog;
+mod table;
 mod trashing;
 
 #[cfg(test)]
@@ -10,35 +17,37 @@ mod test;
 /// https://specifications.freedesktop.org/trash-spec/trashspec-latest.html at 2024-01-22
 #[cfg(target_os = "linux")]
 fn main() -> anyhow::Result<()> {
-    use trashing::UnifiedTrash;
+    microlog::init();
 
-    let args = cli::Args::parse();
+    let bin_name = env::args()
+        .next()
+        .expect("How did you call a program without a path?");
+    let bin_name = PathBuf::from(bin_name);
+    let bin_name = bin_name
+        .file_name()
+        .expect("How did you call a program without a filename?")
+        .to_string_lossy()
+        .to_string();
 
-    let trash = UnifiedTrash::new().unwrap();
+    let trash = UnifiedTrash::new().context("Failed to establish a list of trash locations")?;
 
-    match args.subcommand {
-        cli::Commands::Put { files } => {
-            trash.put(&files)?;
+    match bin_name.as_str() {
+        "trash" => {
+            let args = cli::PutArgs::parse();
+            commands::put::put(args, trash)?;
         }
-        cli::Commands::Restore { orig_path, force } => {
-            todo!()
+        "trash-list" => {
+            let args = cli::ListArgs::parse();
+            commands::list::list(args, trash)?;
         }
-        cli::Commands::List { simple } => {
-            for f in trash.list()? {
-                println!(
-                    "{} -> {}",
-                    f.trash_filename.display(),
-                    f.original_filepath.display()
-                );
+        _ => {
+            let root_args = cli::RootArgs::parse();
+            match root_args.subcommand {
+                cli::SubCmd::Put(args) => commands::put::put(args, trash)?,
+                cli::SubCmd::List(args) => commands::list::list(args, trash)?,
             }
         }
-        cli::Commands::Clear => {
-            todo!()
-        }
-        cli::Commands::Remove { file } => {
-            todo!()
-        }
-    }
+    };
 
     Ok(())
 }

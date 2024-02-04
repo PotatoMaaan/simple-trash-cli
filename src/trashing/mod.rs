@@ -11,9 +11,9 @@ mod trash;
 mod trashinfo;
 mod unified_trash;
 
+pub use trash::Trash;
+pub use trashinfo::Trashinfo;
 pub use unified_trash::UnifiedTrash;
-
-use self::trash::Trash;
 
 #[must_use]
 pub fn list_mounts() -> Result<Vec<PathBuf>, anyhow::Error> {

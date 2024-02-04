@@ -1,4 +1,5 @@
 use anyhow::Context;
+use log::warn;
 use std::{
     ffi::OsString,
     fs::{self},
@@ -15,6 +16,7 @@ use super::{
 };
 
 #[derive(Debug)]
+/// Provides a wrapper around all trashcans across all pysical devices.
 pub struct UnifiedTrash {
     home_trash: Trash,
     trashes: Vec<Trash>,
@@ -29,8 +31,8 @@ impl UnifiedTrash {
             Trash::get_trash_dirs_from_mounts(real_uid).context("Failed to get trash dirs")?;
         trashes.insert(0, home_trash.clone());
 
-        // ensure that admin created trash dirs take priority
-        // yes b and a need to be swapped for this to be the proper way round
+        // ensure that admin created trash dirs take priority.
+        // yes a and b need to be swapped for this to be the proper way round
         trashes.sort_by(|a, b| b.is_admin_trash.cmp(&a.is_admin_trash));
 
         Ok(Self {
@@ -39,7 +41,7 @@ impl UnifiedTrash {
         })
     }
 
-    pub fn list(&self) -> anyhow::Result<Vec<Trashinfo>> {
+    pub fn list(&self) -> anyhow::Result<Vec<(&Trash, Trashinfo)>> {
         let mut parsed = vec![];
         for trash in &self.trashes {
             for info in fs::read_dir(trash.info_dir()).context("Failed to read info dir")? {
@@ -48,14 +50,18 @@ impl UnifiedTrash {
                     .context("Failed to parse dir entry")?;
 
                 if !trash.files_dir().join(&info.trash_filename).exists() {
-                    eprintln!(
-                        "Warn: orphaned trashinfo: {}",
-                        trash.files_dir().join(&info.trash_filename).display()
+                    warn!(
+                        "Orphaned trashinfo file: {}",
+                        trash
+                            .files_dir()
+                            .join(&info.trash_filename)
+                            .with_extension("trashinfo")
+                            .display()
                     );
                     continue;
                 }
 
-                parsed.push(info);
+                parsed.push((trash, info));
             }
         }
 
@@ -68,8 +74,8 @@ impl UnifiedTrash {
                 .context(format!("Failed stat file: {}", input_file.display()))?;
 
             if is_sys_path(&input_file) {
-                eprintln!(
-                    "Warn: trashing in system path {} is not supported.",
+                warn!(
+                    "trashing in system path {} is not supported.",
                     input_file.display()
                 );
                 continue;
@@ -91,7 +97,7 @@ impl UnifiedTrash {
             for iterations in 1.. {
                 if trashed_files
                     .iter()
-                    .any(|x| x.trash_filename == newfile_info.trash_filename)
+                    .any(|(_, x)| x.trash_filename == newfile_info.trash_filename)
                 {
                     let mut name_changed =
                         newfile_info.trash_filename.clone().as_os_str().to_owned();

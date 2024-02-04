@@ -1,48 +1,47 @@
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
-
-#[derive(Debug, Parser, Clone)]
-/// {n} A simple tool to interact with the XDG trashcan on linux{n}{n}
-/// https://github.com/PotatoMaaan/simple-trash-cli
-pub struct Args {
+#[derive(Debug, Clone, Parser)]
+/// A program to interact with the XDG Trash.
+pub struct RootArgs {
     #[command(subcommand)]
-    pub subcommand: Commands,
-
-    /// Ignored for rm compadibility
-    #[arg(short, long)]
-    pub directory: bool,
-
-    /// Ignored for rm compadibility
-    #[arg(short, long)]
-    pub recursive: bool,
+    pub subcommand: SubCmd,
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum Commands {
-    /// Put one or more files into the trash
-    Put { files: Vec<PathBuf> },
+pub enum SubCmd {
+    Put(PutArgs),
+    List(ListArgs),
+}
 
-    /// Restore a file from the trash
-    Restore {
-        /// The original path of the file
-        orig_path: PathBuf,
+#[derive(Debug, Clone, Parser)]
+/// Put files into the trash
+pub struct PutArgs {
+    pub files: Vec<PathBuf>,
+}
 
-        /// Don't ask about replacing existing files
-        #[arg(short, long)]
-        force: bool,
-    },
+#[derive(Debug, Clone, Parser)]
+pub struct ListArgs {
+    /// Just output columnns seperated by \t (for easy parsing) (2>/dev/null to ignore erros / warnings)
+    #[arg(short, long)]
+    pub simple: bool,
 
-    /// Clears the trash (permanent)
-    Clear,
+    /// Also display the trash location where each file resides
+    #[arg(short, long)]
+    pub trash_location: bool,
 
-    /// List all files in the trash
-    List {
-        /// Display a simple version of the output
-        #[arg(short, long)]
-        simple: bool,
-    },
+    /// Reverse the sorting
+    #[arg(short, long)]
+    pub reverse: bool,
 
-    /// Removes a single file from the trash (permanently)
-    Remove { file: PathBuf },
+    /// Sort by this value
+    #[arg(long, value_enum, default_value_t = Sorting::OriginalPath)]
+    pub sort: Sorting,
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum Sorting {
+    Trash,
+    OriginalPath,
+    DeletedAt,
 }

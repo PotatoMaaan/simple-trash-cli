@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::Context;
+use log::{error, warn};
 
 use super::{list_mounts, trashinfo::Trashinfo};
 
@@ -76,7 +77,7 @@ impl Trash {
         {
             Ok(v) => Ok(v),
             Err(e) => {
-                eprintln!(
+                error!(
                     "Error: Failed moving file {}, reverting info file...",
                     info.original_filepath.display()
                 );
@@ -140,10 +141,7 @@ impl Trash {
                 }
 
                 if !checks_passed {
-                    eprintln!(
-                        "Warn: {} does not pass checks, ignoring",
-                        admin_dir.display()
-                    )
+                    warn!("{} does not pass checks, ignoring", admin_dir.display())
                 }
             };
 
