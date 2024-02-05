@@ -2,13 +2,15 @@ use sha2::Digest;
 use sha2::Sha256;
 use std::fmt::Write;
 
+pub mod empty;
 pub mod list;
+pub mod orphaned;
 pub mod put;
 
-pub fn hash(input: &[u8]) -> String {
+pub fn id_from_bytes(input: &[u8]) -> String {
     let hash = Sha256::digest(input);
     let hash = hash.as_slice();
-    encode_hex(hash)
+    encode_hex(hash).chars().take(10).collect()
 }
 
 pub fn encode_hex(bytes: &[u8]) -> String {

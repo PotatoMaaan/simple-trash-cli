@@ -42,14 +42,7 @@ impl Trash {
 
     #[must_use]
     pub fn write(&self, info: &Trashinfo) -> anyhow::Result<()> {
-        let mut f = info
-            .trash_filename
-            .file_name()
-            .context("Has no filename")?
-            .to_os_string();
-        f.push(".trashinfo");
-
-        let full_infoname = self.info_dir().join(f);
+        let full_infoname = self.info_dir().join(&info.trash_filename_trashinfo);
 
         let mut info_file = OpenOptions::new()
             .write(true)
@@ -81,12 +74,8 @@ impl Trash {
                     "Error: Failed moving file {}, reverting info file...",
                     info.original_filepath.display()
                 );
-                fs::remove_file(
-                    self.info_dir()
-                        .join(&info.trash_filename)
-                        .with_extension("trashinfo"),
-                )
-                .context("Failed to remove existing info file")?;
+                fs::remove_file(self.info_dir().join(&info.trash_filename_trashinfo))
+                    .context("Failed to remove existing info file")?;
 
                 Err(e)
             }

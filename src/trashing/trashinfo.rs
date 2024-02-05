@@ -1,5 +1,5 @@
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     fs,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
@@ -16,7 +16,10 @@ pub struct Trashinfo {
     /// Filename to be found in the `files` directory.
     /// Not explicity mentioned by the spec.
     /// Does not include `trashinfo` extension
-    pub trash_filename: PathBuf,
+    pub trash_filename: OsString,
+
+    /// the same as `trash_filename` but with `.trashinfo` *appended* to the end.
+    pub trash_filename_trashinfo: OsString,
 
     /// `DeletionDate` in the spec (local time)
     pub deleted_at: NaiveDateTime,
@@ -49,6 +52,16 @@ impl Trashinfo {
         assert!(relative_path.is_relative());
 
         Ok(self.create_trashfile(relative_path))
+    }
+
+    /// new_name WITHOUT .trashinfo
+    pub fn rename(&mut self, new_name: OsString) {
+        dbg!(&self);
+        self.trash_filename = new_name.clone();
+        let mut new_name_trashinfo = new_name;
+        new_name_trashinfo.push(OsString::from(".trashinfo"));
+        self.trash_filename_trashinfo = new_name_trashinfo;
+        dbg!(&self);
     }
 }
 
@@ -147,6 +160,7 @@ pub fn parse_trashinfo(location: &Path, dev_root: &Path) -> anyhow::Result<Trash
 
     Ok(Trashinfo {
         trash_filename: location.file_stem().context("no file name")?.into(),
+        trash_filename_trashinfo: location.file_name().context("No file name")?.to_os_string(),
         deleted_at: parsed_datetime,
         original_filepath: path.to_path_buf(),
     })
@@ -160,8 +174,9 @@ fn test_trashinfo_parse1() {
         ti,
         Trashinfo {
             trash_filename: "testfile1.txt".into(),
+            trash_filename_trashinfo: "testfile1.txt.trashinfo".into(),
             deleted_at: chrono::NaiveDateTime::from_str("2004-08-31T22:32:08").unwrap(),
-            original_filepath: "foo/bar/meow.bow-wow".into()
+            original_filepath: "foo/bar/meow.bow-wow".into(),
         }
     );
 }
@@ -174,6 +189,7 @@ fn test_trashinfo_parse2() {
         ti,
         Trashinfo {
             trash_filename: "testfile2.txt".into(),
+            trash_filename_trashinfo: "testfile2.txt.trashinfo".into(),
             deleted_at: chrono::NaiveDateTime::from_str("2024-01-22T14:03:15").unwrap(),
             original_filepath: "/home/user/Documents/files/more_files/test.rs".into()
         }
@@ -187,6 +203,7 @@ fn test_trashinfo_parse3() {
     assert_eq!(
         ti,
         Trashinfo {
+            trash_filename_trashinfo: "test file 3.trashinfo".into(),
             trash_filename: "test file 3".into(),
             deleted_at: chrono::NaiveDateTime::from_str("1990-01-12T17:17:40").unwrap(),
             original_filepath: "/home/user/testdir/file containing spaces v2.10".into()

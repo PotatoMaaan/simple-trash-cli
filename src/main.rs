@@ -17,7 +17,7 @@ mod test;
 /// https://specifications.freedesktop.org/trash-spec/trashspec-latest.html at 2024-01-22
 #[cfg(target_os = "linux")]
 fn main() -> anyhow::Result<()> {
-    microlog::init();
+    microlog::init(log::LevelFilter::Info);
 
     let bin_name = env::args()
         .next()
@@ -40,11 +40,17 @@ fn main() -> anyhow::Result<()> {
             let args = cli::ListArgs::parse();
             commands::list::list(args, trash)?;
         }
+        "trash-empty" => {
+            let args = cli::EmptyArgs::parse();
+            commands::empty::empty(args, trash)?
+        }
         _ => {
             let root_args = cli::RootArgs::parse();
             match root_args.subcommand {
                 cli::SubCmd::Put(args) => commands::put::put(args, trash)?,
                 cli::SubCmd::List(args) => commands::list::list(args, trash)?,
+                cli::SubCmd::Empty(args) => commands::empty::empty(args, trash)?,
+                cli::SubCmd::RemoveOrphaned(args) => commands::orphaned::orphaned(args, trash)?,
             }
         }
     };

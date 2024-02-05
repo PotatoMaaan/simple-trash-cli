@@ -1,6 +1,6 @@
 use crate::{
     cli,
-    commands::hash,
+    commands::id_from_bytes,
     table::table,
     trashing::{Trash, Trashinfo, UnifiedTrash},
 };
@@ -25,10 +25,10 @@ pub fn list(args: cli::ListArgs, trash: UnifiedTrash) -> anyhow::Result<()> {
     }
 
     for (trash, entry) in trash_list {
-        let hash = hash(entry.original_filepath.as_os_str().as_bytes());
+        let hash = id_from_bytes(entry.original_filepath.as_os_str().as_bytes());
 
         entries.push([
-            hash.chars().take(10).collect::<String>(),
+            hash,
             entry.deleted_at.to_string(),
             trash.trash_path.display().to_string(),
             entry.original_filepath.display().to_string(),
@@ -47,18 +47,22 @@ pub fn list(args: cli::ListArgs, trash: UnifiedTrash) -> anyhow::Result<()> {
             }
         }
         (false, true) => {
+            println!();
             table(
                 &entries,
                 ["ID", "Deleted at", "Trash location", "Original location"],
             );
+            println!();
         }
         (false, false) => {
+            println!();
             let mut accum2 = vec![];
             for x in entries {
                 accum2.push([x[0].clone(), x[1].clone(), x[3].clone()]);
             }
 
             table(&accum2, ["ID", "Deleted at", "Original location"]);
+            println!();
         }
     }
 
