@@ -1,6 +1,6 @@
 use anyhow::Context;
 use format as f;
-use log::{error, warn};
+use log::error;
 
 use crate::{cli, trashing::UnifiedTrash};
 

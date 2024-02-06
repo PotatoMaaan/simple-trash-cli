@@ -28,6 +28,9 @@ pub fn list_mounts() -> Result<Vec<PathBuf>, anyhow::Error> {
 }
 
 #[must_use]
+/// Does some basic checks to determine if the given path is a system path,
+/// i.e. a place where trashing a file (and later restoring it) would probably
+/// be a bad idea
 pub fn is_sys_path(path: &Path) -> bool {
     let Ok(path) = path.canonicalize() else {
         return false;
@@ -48,12 +51,12 @@ pub fn is_sys_path(path: &Path) -> bool {
         "proc" => true,
         "lost+found" => true,
         "sys" => true,
-        "tmp" => true,
         _ => false,
     }
 }
 
 #[must_use]
+/// Find the root (mountpoint) of the filesystem in which the `path` resides
 pub fn find_fs_root(path: &Path) -> anyhow::Result<PathBuf> {
     let path = path.canonicalize().context("Failed to resolve path")?;
     let root_dev = fs::metadata(&path).context("Failed to get metadata")?.dev();

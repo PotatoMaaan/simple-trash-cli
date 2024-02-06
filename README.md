@@ -56,3 +56,10 @@ Here is a list of available subcommands
 # Contributing
 
 If you find a bug feel free to open an issue.
+
+# Development notes
+
+- All paths shall at no point be treated as a `String`, since Rust strings must always be valid UTF-8 and unix paths can anything but `/` and the null byte (`0x00`). Everywhere where a path or filename is involved, `Path`, `PathBuf` or `OsString` are to be used!
+
+- This program assumes that no files will be trashed or otherwise modified while the program is running (a very short time).
+  One approch to fix this would be advisory locking, but that would require other implementations to play along, and as far as i can tell, neither glib (nautilus) nor trash-cli do any sort of file locking at all. The other would be mandatory locking, but that requires the fs to be mounted with the `mand` option (which is very rarely the case), so this program does not implement any locking.

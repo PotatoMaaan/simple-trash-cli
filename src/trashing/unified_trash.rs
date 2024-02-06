@@ -42,6 +42,8 @@ impl UnifiedTrash {
         })
     }
 
+    /// Removes any orphaned trashinfo files, i.e `.trashinfo` files that don't have a
+    /// matching file actually *in* the trash
     pub fn remove_orphaned(&self) -> anyhow::Result<()> {
         for trash in &self.trashes {
             for info in fs::read_dir(trash.info_dir()).context("Failed to read info dir")? {
@@ -66,6 +68,11 @@ impl UnifiedTrash {
         Ok(())
     }
 
+    /// List all currently trashed files.
+    ///
+    /// Note that is is according to the `.trashinfo` files, i.e a file without the
+    /// matching `.trashinfo` file is *not* listed, as not enough information
+    /// can be gathered to fully construct a `Trashinfo` object.
     pub fn list(&self) -> anyhow::Result<Vec<(&Trash, Trashinfo)>> {
         let mut parsed = vec![];
         for trash in &self.trashes {
@@ -92,6 +99,7 @@ impl UnifiedTrash {
         Ok(parsed)
     }
 
+    /// Attempts to trash the `input_file`, creating a new trashcan on the device if needed.
     pub fn put(&self, input_file: &Path) -> anyhow::Result<()> {
         let input_file_meta = fs::metadata(&input_file)
             .context(format!("Failed stat file: {}", input_file.display()))?;
@@ -111,17 +119,18 @@ impl UnifiedTrash {
         let mut trash_filename_trashinfo = trash_filename.clone();
         trash_filename_trashinfo.push(OsString::from(".trashinfo"));
 
-        let original_info = Trashinfo {
+        // the trashinfo for the new file, this gets updated if the file already exists
+        let mut newfile_info = Trashinfo {
+            trash_filename: trash_filename.clone(),
             trash_filename_trashinfo,
-            trash_filename,
             deleted_at: chrono::Local::now().naive_local(),
             original_filepath: input_file
                 .canonicalize()
                 .context("Failed to resolve path")?,
         };
 
-        let mut newfile_info = original_info.clone();
-
+        // by listing all trashes, we ensure that the filename is unique system wide,
+        // as far as i can tell, this is what nautilus does as well and genereally seems like a good idea
         let trashed_files = self.list().context("Failed to list trash")?;
 
         for iterations in 1.. {
@@ -129,8 +138,13 @@ impl UnifiedTrash {
                 .iter()
                 .any(|(_, x)| x.trash_filename == newfile_info.trash_filename)
             {
+                // If we get here, a file with the current name already exists in one of the trashes,
+                // so we append the current iteration number to it and check again
+                // we try to preserve the extension in case a user wants to manually recover a file
+                // (so it still has the proper extension)
+
                 // somefile.txt
-                let old_name = PathBuf::from(&original_info.trash_filename);
+                let old_name = PathBuf::from(&trash_filename);
 
                 // somefile
                 let mut stem = old_name
@@ -154,6 +168,7 @@ impl UnifiedTrash {
 
                 continue;
             } else {
+                // we have a unique filename
                 break;
             }
         }
@@ -163,7 +178,7 @@ impl UnifiedTrash {
         if input_file_meta.dev() == self.home_trash.device {
             // input is on the same device as the home trash, so we use that.
             self.home_trash
-                .write(&newfile_info)
+                .write_trashinfo(&newfile_info)
                 .context("Failed to write to home trash")?;
         } else {
             let existing_trash = self
@@ -174,7 +189,7 @@ impl UnifiedTrash {
             if let Some(existing_trash) = existing_trash {
                 // We already have a trash on the device, so we use it
                 existing_trash
-                    .write(&newfile_info)
+                    .write_trashinfo(&newfile_info)
                     .context("Failed to write to trash")?;
             } else {
                 // We don't have a trash on this device, so we create one
@@ -184,7 +199,8 @@ impl UnifiedTrash {
                 assert!(mounts.contains(&fs_root), "oh nein");
 
                 let fs_root_meta = fs::metadata(&fs_root).context("Failed to stat mount")?;
-                let trash_name = format!(".Trash-{}", unsafe { libc::getuid() });
+                let uid = unsafe { libc::getuid() };
+                let trash_name = format!(".Trash-{}", uid);
                 let trash = Trash::new_with_ensure(
                     fs_root.join(trash_name),
                     fs_root.clone(),
@@ -198,7 +214,7 @@ impl UnifiedTrash {
                 ))?;
 
                 trash
-                    .write(&newfile_info)
+                    .write_trashinfo(&newfile_info)
                     .context("Failed writing to trash")?;
             }
         }
@@ -206,6 +222,8 @@ impl UnifiedTrash {
         Ok(())
     }
 
+    /// Empty the trash based on the `.trashinfo` files, meaning that files for which no
+    /// `.trashinfo` file exists will be ignored
     pub fn empty(&self, before: chrono::NaiveDateTime, dry_run: bool) -> anyhow::Result<()> {
         for (trash, info) in self.list().context("Failed to list trash files")? {
             if info.deleted_at < before {
@@ -217,10 +235,17 @@ impl UnifiedTrash {
                     continue;
                 }
 
-                if let Err(e) = fs::remove_dir_all(&files_file) {
+                let remove_result = if files_file.is_file() {
+                    fs::remove_file(&files_file)
+                } else {
+                    fs::remove_dir_all(&files_file)
+                };
+
+                if let Err(e) = remove_result {
                     match e.kind() {
                         std::io::ErrorKind::NotFound => {
                             log::info!("Removing orphaned trashinfo file {}", info_file.display());
+                            // This falls through to the remove_file call below
                         }
                         _ => {
                             anyhow::bail!(f!(
@@ -231,11 +256,38 @@ impl UnifiedTrash {
                         }
                     }
                 }
+
                 fs::remove_file(&info_file)
                     .context(f!("Failed to remove info file {}", info_file.display()))?;
             }
         }
 
         Ok(())
+    }
+
+    pub fn restore(
+        &self,
+        path: &Path,
+        exists_callback: impl for<'a> Fn(&'a [(&Trash, Trashinfo)]) -> &'a Trashinfo,
+    ) -> anyhow::Result<()> {
+        let trashed_files = self.list().context("Failed to list trashed files")?;
+        let matching = trashed_files
+            .into_iter()
+            .filter(|(_, x)| x.original_filepath == path)
+            .collect::<Vec<_>>();
+
+        match matching.len() {
+            0 => anyhow::bail!("No files match"),
+            1 => restore_file(&matching[0].1)?,
+            _ => {
+                let del = exists_callback(&matching);
+            }
+        }
+
+        fn restore_file(p: &Trashinfo) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        todo!()
     }
 }

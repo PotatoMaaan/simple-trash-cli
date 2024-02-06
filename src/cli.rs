@@ -70,9 +70,6 @@ pub struct EmptyArgs {
     #[arg(short = 'B', long)]
     pub before_datetime: Option<chrono::NaiveDateTime>,
 
-    #[arg(short, long)]
-    pub days: u32,
-
     /// Dry run. Don't delete anything, just print.
     #[arg(short, long)]
     pub dry_run: bool,

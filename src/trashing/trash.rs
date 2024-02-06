@@ -10,7 +10,7 @@ use log::{error, warn};
 
 use super::{list_mounts, trashinfo::Trashinfo};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct Trash {
     pub is_home_trash: bool,
     pub is_admin_trash: bool,
@@ -21,6 +21,7 @@ pub struct Trash {
 
 impl Trash {
     #[must_use]
+    /// Gets or creates a trash at the given location. Also ensures that $tash/files and $trash/info exist
     pub fn new_with_ensure(
         path: PathBuf,
         dev_root: PathBuf,
@@ -41,7 +42,7 @@ impl Trash {
     }
 
     #[must_use]
-    pub fn write(&self, info: &Trashinfo) -> anyhow::Result<()> {
+    pub fn write_trashinfo(&self, info: &Trashinfo) -> anyhow::Result<()> {
         let full_infoname = self.info_dir().join(&info.trash_filename_trashinfo);
 
         let mut info_file = OpenOptions::new()
@@ -97,13 +98,14 @@ impl Trash {
 
         let mut trash_dirs = vec![];
         for top_dir in top_dirs {
-            // what the spec calls $top_dir/.Trash
+            // $top_dir/.Trash (here refered to as admin dirs)
             let admin_dir = top_dir.join(".Trash");
 
             // the admin dir exists
             if let Ok(admin_dir_meta) = fs::metadata(&admin_dir) {
                 let mut checks_passed = false;
-                // the sticky bit is set (required according to spec)
+
+                // the sticky bit is set (required by spec)
                 if admin_dir_meta.permissions().mode() & 0o1000 != 0 {
                     // the admin dir is not a symlink (also required)
                     if !admin_dir_meta.is_symlink() {
@@ -124,12 +126,16 @@ impl Trash {
                                 checks_passed = true;
                                 // we intentionally don't `continue` here, since both admin and uid
                                 // trash dirs should be supported at once.
+                                // The admin dir should always take priority, this is ensured in the
+                                // new() method of the UnifiedTrash
                             }
                         }
                     }
                 }
 
                 if !checks_passed {
+                    // the spec isn't clear about if an invalid admin dir should accounted for when listing
+                    // files, this implementation completely ignores invalid admin dirs.
                     warn!("{} does not pass checks, ignoring", admin_dir.display())
                 }
             };
@@ -137,6 +143,8 @@ impl Trash {
             // we continue with $top_dir/.Trash-$uid or, as we will call it, the uid_dir
 
             let uid_dir = top_dir.join(format!(".Trash-{uid}"));
+
+            // since we are just listing existing trashes here, we don't create the uid dir.
 
             if let Ok(uid_dir_meta) = fs::metadata(&uid_dir) {
                 if let Ok(new_trash) =

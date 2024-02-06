@@ -10,9 +10,13 @@ use anyhow::Context;
 use chrono::NaiveDateTime;
 use rustc_hash::FxHashMap;
 
+use super::Trash;
+
 /// Information about a trashed file
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct Trashinfo {
+pub struct Trashinfo<'a> {
+    pub trash: &'a Trash,
+
     /// Filename to be found in the `files` directory.
     /// Not explicity mentioned by the spec.
     /// Does not include `trashinfo` extension
@@ -28,7 +32,10 @@ pub struct Trashinfo {
     pub original_filepath: PathBuf,
 }
 
-impl Trashinfo {
+impl<'a> Trashinfo<'a> {
+    /// Creates a trashinfo file from the current state
+    ///
+    /// Uses absolute paths, see `trashinfo_file_relative` for relative paths
     pub fn trashinfo_file(&self) -> String {
         self.create_trashfile(&self.original_filepath)
     }
@@ -43,6 +50,11 @@ impl Trashinfo {
         )
     }
 
+    /// Creates a trashinfo file from the current state using relative paths
+    ///
+    /// Accoding to the spec, implementations should use relative paths any trash
+    /// but the home trash. This makes it possible to still use the trash even if
+    /// the drive is mounted to a different path
     pub fn trashinfo_file_relative(&self, relative_to: &Path) -> anyhow::Result<String> {
         let relative_path = self
             .original_filepath
@@ -54,7 +66,10 @@ impl Trashinfo {
         Ok(self.create_trashfile(relative_path))
     }
 
-    /// new_name WITHOUT .trashinfo
+    /// Renames `self` to the `new_name`
+    ///
+    /// ## Important
+    /// This method *always* adds the `.trashinfo` extension
     pub fn rename(&mut self, new_name: OsString) {
         dbg!(&self);
         self.trash_filename = new_name.clone();
@@ -65,14 +80,21 @@ impl Trashinfo {
     }
 }
 
-/// location: Path of the .trashinfo file
-/// dev_root: Path where the trash dir is inside, not the path of the actual trash dir!
-pub fn parse_trashinfo(location: &Path, dev_root: &Path) -> anyhow::Result<Trashinfo> {
+/// Attempts to parse a `.trashinfo` fole at the `location`.
+///
+/// `dev_root` Path where the trash resides, not the path of the actual trash dir!
+/// The original location of the parsed file is based off this (if it is relative),
+/// so be careful.
+/// ## Example:
+/// location: `/mnt/drive1/.Trash-1000/info/somefile.trashinfo`
+///
+/// dev_root: `/mnt/drive1`
+pub fn parse_trashinfo<'a>(location: &Path, trash: &'a Trash) -> anyhow::Result<Trashinfo<'a>> {
     let file = fs::read_to_string(location).context("Failed reading trashinfo file")?;
 
     let mut lines = file.lines();
 
-    // Its first line must be [Trash Info].
+    // the first line must be [Trash Info].
     if lines.next().context("no first line")? != "[Trash Info]" {
         anyhow::bail!("invalid first line");
     }
@@ -85,7 +107,7 @@ pub fn parse_trashinfo(location: &Path, dev_root: &Path) -> anyhow::Result<Trash
         Ok((key, val))
     }
 
-    // The implementation MUST ignore any other lines in this file, except the first line (must be [Trash Info]) and these two key/value pairs.
+    // the implementation MUST ignore any other lines in this file, except the first line (must be [Trash Info]) and these two key/value pairs.
     // If a string that starts with “Path=” or “DeletionDate=” occurs several times, the first occurence is to be used
     let lines = lines
         .map(parse_line)
@@ -130,7 +152,7 @@ pub fn parse_trashinfo(location: &Path, dev_root: &Path) -> anyhow::Result<Trash
         chrono::DateTime::parse_from_rfc2822(&input).map(|x| x.naive_local())
     }
 
-    // probably horribly over complicated, but i really wanted to get the errors from each parser
+    // when partition_map() in std :(
     let (oks, errs) = [parser1, parser2, parser3, parser4]
         .into_iter()
         .map(|f| f(deleted_at))
