@@ -11,12 +11,10 @@ pub fn list(args: cli::ListArgs, trash: UnifiedTrash) -> anyhow::Result<()> {
 
     let mut trash_list = trash.list()?;
 
-    let sorter: fn(&(&Trash, Trashinfo), &(&Trash, Trashinfo)) -> _ = match args.sort {
-        cli::Sorting::Trash => |(a, _), (b, _)| a.trash_path.cmp(&b.trash_path),
-        cli::Sorting::OriginalPath => {
-            |(_, a), (_, b)| a.original_filepath.cmp(&b.original_filepath)
-        }
-        cli::Sorting::DeletedAt => |(_, a), (_, b)| a.deleted_at.cmp(&b.deleted_at),
+    let sorter: for<'a> fn(&Trashinfo<'a>, &Trashinfo<'a>) -> _ = match args.sort {
+        cli::Sorting::Trash => |a, b| a.trash.trash_path.cmp(&b.trash.trash_path),
+        cli::Sorting::OriginalPath => |a, b| a.original_filepath.cmp(&b.original_filepath),
+        cli::Sorting::DeletedAt => |a, b| a.deleted_at.cmp(&b.deleted_at),
     };
     trash_list.sort_by(sorter);
 
@@ -24,13 +22,13 @@ pub fn list(args: cli::ListArgs, trash: UnifiedTrash) -> anyhow::Result<()> {
         trash_list.reverse();
     }
 
-    for (trash, entry) in trash_list {
-        let hash = id_from_bytes(entry.original_filepath.as_os_str().as_bytes());
+    for entry in trash_list {
+        let id = id_from_bytes(entry.original_filepath.as_os_str().as_bytes());
 
         entries.push([
-            hash,
+            id,
             entry.deleted_at.to_string(),
-            trash.trash_path.display().to_string(),
+            entry.trash.trash_path.display().to_string(),
             entry.original_filepath.display().to_string(),
         ]);
     }

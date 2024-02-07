@@ -43,6 +43,8 @@ impl Trash {
 
     #[must_use]
     pub fn write_trashinfo(&self, info: &Trashinfo) -> anyhow::Result<()> {
+        assert_eq!(info.trash, self);
+
         let full_infoname = self.info_dir().join(&info.trash_filename_trashinfo);
 
         let mut info_file = OpenOptions::new()

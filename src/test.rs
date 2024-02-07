@@ -22,7 +22,7 @@ fn test_trash_list() {
         .list()
         .unwrap()
         .into_iter()
-        .map(|(_, x)| x.original_filepath)
+        .map(|x| x.original_filepath)
         .collect::<Vec<_>>();
 
     our_output.sort();
