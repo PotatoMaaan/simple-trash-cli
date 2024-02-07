@@ -44,6 +44,10 @@ fn main() -> anyhow::Result<()> {
             let args = cli::EmptyArgs::parse();
             commands::empty::empty(args, trash)?
         }
+        "trash-restore" => {
+            let args = cli::RestoreArgs::parse();
+            commands::restore::restore(args, trash)?;
+        }
         _ => {
             let root_args = cli::RootArgs::parse();
             match root_args.subcommand {
@@ -51,6 +55,7 @@ fn main() -> anyhow::Result<()> {
                 cli::SubCmd::List(args) => commands::list::list(args, trash)?,
                 cli::SubCmd::Empty(args) => commands::empty::empty(args, trash)?,
                 cli::SubCmd::RemoveOrphaned(args) => commands::orphaned::orphaned(args, trash)?,
+                cli::SubCmd::Restore(args) => commands::restore::restore(args, trash)?,
             }
         }
     };

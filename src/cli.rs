@@ -22,6 +22,7 @@ pub enum SubCmd {
     List(ListArgs),
     Empty(EmptyArgs),
     RemoveOrphaned(RemoveOrphanedArgs),
+    Restore(RestoreArgs),
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -78,6 +79,13 @@ pub struct EmptyArgs {
 /// Remove orphaned trashinfo files
 #[derive(Debug, Clone, Parser)]
 pub struct RemoveOrphanedArgs {}
+
+/// Restore a file from the trash
+#[derive(Debug, Clone, Parser)]
+pub struct RestoreArgs {
+    /// The ID of a file or it's original
+    pub id_or_path: String,
+}
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum Sorting {

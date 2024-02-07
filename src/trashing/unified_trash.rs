@@ -290,13 +290,13 @@ impl UnifiedTrash {
 
     pub fn restore(
         &self,
-        path: &Path,
+        filter_predicate: impl for<'a> Fn(&Trashinfo<'a>) -> bool,
         exists_callback: impl for<'a> Fn(&'a [Trashinfo<'a>]) -> &'a Trashinfo,
     ) -> anyhow::Result<()> {
         let trashed_files = self.list().context("Failed to list trashed files")?;
         let matching = trashed_files
             .into_iter()
-            .filter(|x| x.original_filepath == path)
+            .filter(filter_predicate)
             .collect::<Vec<_>>();
 
         match matching.len() {
@@ -304,13 +304,25 @@ impl UnifiedTrash {
             1 => restore_file(&matching[0])?,
             _ => {
                 let del = exists_callback(&matching);
+                restore_file(del)?
             }
+        };
+
+        fn restore_file<'a>(info: &'a Trashinfo) -> anyhow::Result<&'a Trashinfo<'a>> {
+            let files_path = info.trash.files_dir().join(&info.trash_filename);
+            let info_path = info.trash.info_dir().join(&info.trash_filename_trashinfo);
+
+            fs::rename(&files_path, &info.original_filepath)
+                .context(f!("Failed to restore {}", files_path.display()))?;
+
+            fs::remove_file(&info_path).context(f!(
+                "Failed to remove trashinfo file: {}",
+                info_path.display()
+            ))?;
+
+            Ok(info)
         }
 
-        fn restore_file(p: &Trashinfo) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        todo!()
+        Ok(())
     }
 }
