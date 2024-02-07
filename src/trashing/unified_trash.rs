@@ -291,7 +291,8 @@ impl UnifiedTrash {
     pub fn restore(
         &self,
         filter_predicate: impl for<'a> Fn(&Trashinfo<'a>) -> bool,
-        exists_callback: impl for<'a> Fn(&'a [Trashinfo<'a>]) -> &'a Trashinfo,
+        matched_callback: impl for<'a> Fn(&'a [Trashinfo<'a>]) -> &'a Trashinfo,
+        exists_callback: impl for<'a> Fn(&Trashinfo<'a>) -> bool,
     ) -> anyhow::Result<()> {
         let trashed_files = self.list().context("Failed to list trashed files")?;
         let matching = trashed_files
@@ -301,9 +302,15 @@ impl UnifiedTrash {
 
         match matching.len() {
             0 => anyhow::bail!("No files match"),
-            1 => restore_file(&matching[0])?,
+            1 => {
+                let del = &matching[0];
+                if del.original_filepath.exists() {
+                    if !exists_callback(&del) {}
+                }
+                restore_file(&matching[0])?
+            }
             _ => {
-                let del = exists_callback(&matching);
+                let del = matched_callback(&matching);
                 restore_file(del)?
             }
         };

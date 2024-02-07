@@ -1,6 +1,7 @@
-use std::{os::unix::ffi::OsStrExt, path::PathBuf};
+use std::{os::unix::ffi::OsStrExt, path::PathBuf, process::exit};
 
 use anyhow::Context;
+use log::error;
 
 use crate::{
     commands::{ask, id_from_bytes},
@@ -29,9 +30,19 @@ pub fn restore(args: crate::cli::RestoreArgs, trash: crate::UnifiedTrash) -> any
                 }
                 table(&collector, ["Index", "File", "Deleted At"]);
                 println!();
-                let res = ask(&format!("Choose one [{:?}]: ", 0..matched.len()));
+                let res: usize = ask(&format!("Choose one [{:?}]: ", 0..matched.len()))
+                    .parse()
+                    .unwrap_or_else(|e| {
+                        error!("Invalid number: {}", e);
+                        exit(1);
+                    });
 
-                todo!()
+                if let Some(t) = matched.get(res) {
+                    t
+                } else {
+                    error!("Index {} does not exist", res);
+                    exit(1);
+                }
             },
         )
         .context("Failed to restore form trash")?;
