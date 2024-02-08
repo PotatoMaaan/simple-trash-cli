@@ -4,7 +4,7 @@ use anyhow::Context;
 use log::error;
 
 use crate::{
-    commands::{ask, id_from_bytes},
+    commands::{ask, ask_yes_no, id_from_bytes},
     table::table,
 };
 
@@ -17,7 +17,7 @@ pub fn restore(args: crate::cli::RestoreArgs, trash: crate::UnifiedTrash) -> any
                 hash == args.id_or_path || PathBuf::from(&args.id_or_path) == info.original_filepath
             },
             |matched| {
-                println!("Multiple files match:\n");
+                println!("Multiple files match {}:\n", args.id_or_path);
 
                 let mut collector = vec![];
                 for (i, info) in matched.iter().enumerate() {
@@ -44,9 +44,17 @@ pub fn restore(args: crate::cli::RestoreArgs, trash: crate::UnifiedTrash) -> any
                 }
             },
             |info| {
-                println!("{}", info.original_filepath);
-
-                todo!()
+                if !ask_yes_no(
+                    &format!(
+                        "A file already exists at '{}', do you want to overwrite it?",
+                        info.original_filepath.display()
+                    ),
+                    false,
+                ) {
+                    error!("Aborted by user");
+                    exit(0);
+                }
+                true
             },
         )
         .context("Failed to restore form trash")?;

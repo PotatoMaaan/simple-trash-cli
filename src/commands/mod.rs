@@ -1,3 +1,4 @@
+use colored::Colorize;
 use sha2::Digest;
 use sha2::Sha256;
 use std::fmt::Write;
@@ -39,11 +40,11 @@ pub fn ask(prompt: &str) -> String {
 
 pub fn ask_yes_no(prompt: &str, default: bool) -> bool {
     let p = ask(&format!(
-        "{} [{}]",
+        "{} [{}] ",
         prompt,
         match default {
-            true => "Y/n",
-            false => "y/N",
+            true => "Y/n".green(),
+            false => "y/N".bright_red(),
         }
     ));
 

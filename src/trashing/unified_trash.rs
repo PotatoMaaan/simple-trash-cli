@@ -288,6 +288,8 @@ impl UnifiedTrash {
         Ok(())
     }
 
+    /// Restores a file to it's original location. The callbacks are used to handle
+    /// cases where files already exist etc.
     pub fn restore(
         &self,
         filter_predicate: impl for<'a> Fn(&Trashinfo<'a>) -> bool,
@@ -311,6 +313,7 @@ impl UnifiedTrash {
                 }
                 restore_file(&matching[0])?
             }
+            // we only call the matched callback if more than one file matched
             _ => {
                 let del = matched_callback(&matching);
                 if del.original_filepath.exists() {
@@ -329,6 +332,7 @@ impl UnifiedTrash {
             fs::rename(&files_path, &info.original_filepath)
                 .context(f!("Failed to restore {}", files_path.display()))?;
 
+            // We don't move the file back if this fails, as that might cause some unexpected troubles.
             fs::remove_file(&info_path).context(f!(
                 "Failed to remove trashinfo file: {}",
                 info_path.display()
