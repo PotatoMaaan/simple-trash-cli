@@ -305,12 +305,19 @@ impl UnifiedTrash {
             1 => {
                 let del = &matching[0];
                 if del.original_filepath.exists() {
-                    if !exists_callback(&del) {}
+                    if !exists_callback(&del) {
+                        anyhow::bail!("Aborted by user");
+                    }
                 }
                 restore_file(&matching[0])?
             }
             _ => {
                 let del = matched_callback(&matching);
+                if del.original_filepath.exists() {
+                    if !exists_callback(&del) {
+                        anyhow::bail!("Aborted by user");
+                    }
+                }
                 restore_file(del)?
             }
         };

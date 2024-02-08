@@ -11,11 +11,10 @@ use crate::{
 pub fn restore(args: crate::cli::RestoreArgs, trash: crate::UnifiedTrash) -> anyhow::Result<()> {
     trash
         .restore(
-            |trash| {
-                let hash = id_from_bytes(trash.original_filepath.as_os_str().as_bytes());
+            |info| {
+                let hash = id_from_bytes(info.original_filepath.as_os_str().as_bytes());
 
-                hash == args.id_or_path
-                    || PathBuf::from(&args.id_or_path) == trash.original_filepath
+                hash == args.id_or_path || PathBuf::from(&args.id_or_path) == info.original_filepath
             },
             |matched| {
                 println!("Multiple files match:\n");
@@ -43,6 +42,11 @@ pub fn restore(args: crate::cli::RestoreArgs, trash: crate::UnifiedTrash) -> any
                     error!("Index {} does not exist", res);
                     exit(1);
                 }
+            },
+            |info| {
+                println!("{}", info.original_filepath);
+
+                todo!()
             },
         )
         .context("Failed to restore form trash")?;
