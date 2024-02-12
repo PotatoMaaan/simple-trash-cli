@@ -11,6 +11,7 @@ pub mod empty;
 pub mod list;
 pub mod orphaned;
 pub mod put;
+pub mod remove;
 pub mod restore;
 
 pub fn id_from_bytes(input: &[u8]) -> String {

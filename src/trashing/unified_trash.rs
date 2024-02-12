@@ -288,6 +288,22 @@ impl UnifiedTrash {
         Ok(())
     }
 
+    pub fn remove(
+        &self,
+        matched_callback: impl for<'a> Fn(&'a [Trashinfo<'a>]) -> &'a Trashinfo,
+        filter_predicate: impl for<'a> Fn(&Trashinfo<'a>) -> bool,
+    ) -> anyhow::Result<()> {
+        let trashed_files = self.list().context("Failed to list trashed files")?;
+        let matching = trashed_files
+            .into_iter()
+            .filter(filter_predicate)
+            .collect::<Vec<_>>();
+
+        let selected = matched_callback(&matching);
+
+        todo!()
+    }
+
     /// Restores a file to it's original location. The callbacks are used to handle
     /// cases where files already exist etc.
     pub fn restore(
