@@ -7,6 +7,8 @@ use std::io::stdout;
 use std::io::BufRead;
 use std::io::Write as _;
 
+use crate::trashing::Trashinfo;
+
 pub mod empty;
 pub mod list;
 pub mod orphaned;

@@ -78,6 +78,7 @@ impl UnifiedTrash {
         for trash in &self.trashes {
             for info in fs::read_dir(trash.info_dir()).context("Failed to read info dir")? {
                 let info = info.context("Failed to get dir entry")?;
+                log::trace!("Parsing {}", info.path().display());
                 let info = trashinfo::parse_trashinfo(&info.path(), &trash)
                     .context("Failed to parse dir entry")?;
 
@@ -258,6 +259,7 @@ impl UnifiedTrash {
                     continue;
                 }
 
+                println!("Removing {}", files_file.display());
                 let remove_result = if files_file.is_file() {
                     fs::remove_file(&files_file)
                 } else {
@@ -290,8 +292,8 @@ impl UnifiedTrash {
 
     pub fn remove(
         &self,
-        matched_callback: impl for<'a> Fn(&'a [Trashinfo<'a>]) -> &'a Trashinfo,
         filter_predicate: impl for<'a> Fn(&Trashinfo<'a>) -> bool,
+        matched_callback: impl for<'a> Fn(&'a [Trashinfo<'a>]) -> &'a Trashinfo,
     ) -> anyhow::Result<()> {
         let trashed_files = self.list().context("Failed to list trashed files")?;
         let matching = trashed_files
@@ -299,9 +301,25 @@ impl UnifiedTrash {
             .filter(filter_predicate)
             .collect::<Vec<_>>();
 
-        let selected = matched_callback(&matching);
+        let del = match matching.len() {
+            0 => anyhow::bail!("No files match"),
+            1 => &matching[0],
+            // we only call the matched callback if more than one file matched
+            _ => matched_callback(&matching),
+        };
 
-        todo!()
+        let info_path = del.trash.info_dir().join(&del.trash_filename_trashinfo);
+        let files_path = del.trash.files_dir().join(&del.trash_filename);
+
+        if files_path.is_file() {
+            fs::remove_file(&files_path).context("Failed to remove file")?;
+        } else {
+            fs::remove_dir_all(&files_path).context("Failed to remove directory")?;
+        }
+
+        fs::remove_file(&info_path).context("Failed to remove trashinfo file")?;
+
+        Ok(())
     }
 
     /// Restores a file to it's original location. The callbacks are used to handle

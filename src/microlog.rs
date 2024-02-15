@@ -1,10 +1,18 @@
+use std::env;
+
 use colored::Colorize;
 use log::{Level, LevelFilter};
 
 struct MicroLog {}
 
-pub fn init(level: LevelFilter) {
+pub fn init(mut level: LevelFilter) {
     static LOGGER: MicroLog = MicroLog {};
+    let rust_log_var = env::var("RUST_LOG").unwrap_or("".to_owned());
+
+    if let Ok(rust_log_var) = rust_log_var.parse::<LevelFilter>() {
+        level = level.max(rust_log_var);
+    }
+
     log::set_logger(&LOGGER).expect("Failed to set the logger");
     log::set_max_level(level);
 }
