@@ -15,7 +15,6 @@ pub use trash::Trash;
 pub use trashinfo::Trashinfo;
 pub use unified_trash::UnifiedTrash;
 
-#[must_use]
 pub fn list_mounts() -> Result<Vec<PathBuf>, anyhow::Error> {
     Ok(fs::read("/proc/mounts")
         .context("Failed to read /proc/mounts, are you perhaps not running linux?")?
@@ -27,7 +26,6 @@ pub fn list_mounts() -> Result<Vec<PathBuf>, anyhow::Error> {
         .collect())
 }
 
-#[must_use]
 /// Does some basic checks to determine if the given path is a system path,
 /// i.e. a place where trashing a file (and later restoring it) would probably
 /// be a bad idea
@@ -55,7 +53,6 @@ pub fn is_sys_path(path: &Path) -> bool {
     }
 }
 
-#[must_use]
 /// Find the root (mountpoint) of the filesystem in which the `path` resides
 pub fn find_fs_root(path: &Path) -> anyhow::Result<PathBuf> {
     let path = path.canonicalize().context("Failed to resolve path")?;
@@ -66,7 +63,6 @@ pub fn find_fs_root(path: &Path) -> anyhow::Result<PathBuf> {
         .collect())
 }
 
-#[must_use]
 pub fn find_home_trash() -> anyhow::Result<Trash> {
     let home_dir = PathBuf::from(env::var("HOME").context("No home dir set!")?);
     let xdg_data_dir = env::var("XDG_DATA_HOME")

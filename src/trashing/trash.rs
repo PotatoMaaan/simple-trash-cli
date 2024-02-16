@@ -53,7 +53,7 @@ impl Trash {
             .context("Failed to open info file")?;
 
         let trashinfo_file = if self.is_home_trash {
-            info.trashinfo_file()
+            info.trashinfo_file_abs()
         } else {
             info.trashinfo_file_relative(&self.dev_root)
                 .context("Failed to build relative path")?

@@ -36,7 +36,7 @@ impl<'a> Trashinfo<'a> {
     /// Creates a trashinfo file from the current state
     ///
     /// Uses absolute paths, see `trashinfo_file_relative` for relative paths
-    pub fn trashinfo_file(&self) -> String {
+    pub fn trashinfo_file_abs(&self) -> String {
         self.create_trashfile(&self.original_filepath)
     }
 
