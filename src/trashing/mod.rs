@@ -21,7 +21,7 @@ pub fn list_mounts() -> Result<Vec<PathBuf>, anyhow::Error> {
         .context("Failed to read /proc/mounts, are you perhaps not running linux?")?
         .split(|x| *x as char == '\n')
         .filter(|x| !x.is_empty())
-        .map(|x| x.split(|x| *x == (' ' as u8)).skip(1).next().unwrap())
+        .map(|x| x.split(|x| *x == b' ').nth(1).unwrap())
         .map(OsStr::from_bytes)
         .map(PathBuf::from)
         .collect())
@@ -40,7 +40,7 @@ pub fn is_sys_path(path: &Path) -> bool {
         return true;
     }
 
-    let Some(first_component) = path.components().skip(1).next() else {
+    let Some(first_component) = path.components().nth(1) else {
         return false;
     };
     let first_component = first_component.as_os_str();
@@ -103,25 +103,25 @@ fn lexical_absolute(p: &Path) -> std::io::Result<PathBuf> {
 #[test]
 fn test_is_sys_path1() {
     let p = PathBuf::from("/dev/usb");
-    assert_eq!(is_sys_path(&p), true);
+    assert!(is_sys_path(&p));
 }
 
 #[test]
 fn test_is_sys_path2() {
     let p = PathBuf::from("/proc/mounts");
-    assert_eq!(is_sys_path(&p), true);
+    assert!(is_sys_path(&p));
 }
 
 #[test]
 fn test_is_sys_path3() {
     let p = PathBuf::from("/home");
 
-    assert_eq!(is_sys_path(&p), false);
+    assert!(!is_sys_path(&p));
 }
 
 #[test]
 fn test_is_sys_path4() {
     let p = PathBuf::from("/");
 
-    assert_eq!(is_sys_path(&p), true);
+    assert!(is_sys_path(&p));
 }

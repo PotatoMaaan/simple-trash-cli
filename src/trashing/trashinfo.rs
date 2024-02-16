@@ -93,7 +93,7 @@ pub fn parse_trashinfo<'a>(location: &Path, trash: &'a Trash) -> anyhow::Result<
     }
 
     fn parse_line(line: &str) -> anyhow::Result<(&str, &str)> {
-        let mut line = line.split("=");
+        let mut line = line.split('=');
         let key = line.next().context("No key")?;
         let val = line.next().context("No Value")?;
 
@@ -126,23 +126,23 @@ pub fn parse_trashinfo<'a>(location: &Path, trash: &'a Trash) -> anyhow::Result<
 
     /// This covers most real-world cases
     fn parser1(input: &str) -> Result<NaiveDateTime, chrono::ParseError> {
-        chrono::NaiveDateTime::from_str(&input)
+        chrono::NaiveDateTime::from_str(input)
     }
 
     /// According to the spec, the datetime should be rfc3339, but i've not found a single real example that actually works here
     /// Even the provided sample time in the spec does not parse with this.
     fn parser2(input: &str) -> Result<NaiveDateTime, chrono::ParseError> {
-        chrono::DateTime::parse_from_rfc3339(&input).map(|x| x.naive_local())
+        chrono::DateTime::parse_from_rfc3339(input).map(|x| x.naive_local())
     }
 
     /// This works for the example provided in the spec.
     fn parser3(input: &str) -> Result<NaiveDateTime, chrono::ParseError> {
-        chrono::NaiveDateTime::parse_from_str(&input, "%Y%m%dT%H:%M:%S")
+        chrono::NaiveDateTime::parse_from_str(input, "%Y%m%dT%H:%M:%S")
     }
 
     /// Let's just also throw this in because why not
     fn parser4(input: &str) -> Result<NaiveDateTime, chrono::ParseError> {
-        chrono::DateTime::parse_from_rfc2822(&input).map(|x| x.naive_local())
+        chrono::DateTime::parse_from_rfc2822(input).map(|x| x.naive_local())
     }
 
     // when partition_map() in std :(

@@ -52,7 +52,7 @@ impl UnifiedTrash {
         for trash in &self.trashes {
             for info in fs::read_dir(trash.info_dir()).context("Failed to read info dir")? {
                 let info = info.context("Failed to get dir entry")?;
-                let info = trashinfo::parse_trashinfo(&info.path(), &trash)
+                let info = trashinfo::parse_trashinfo(&info.path(), trash)
                     .context("Failed to parse dir entry")?;
 
                 if !trash.files_dir().join(&info.trash_filename).exists() {
@@ -83,7 +83,7 @@ impl UnifiedTrash {
             for info in fs::read_dir(trash.info_dir()).context("Failed to read info dir")? {
                 let info = info.context("Failed to get dir entry")?;
                 log::trace!("Parsing {}", info.path().display());
-                let info = trashinfo::parse_trashinfo(&info.path(), &trash)
+                let info = trashinfo::parse_trashinfo(&info.path(), trash)
                     .context("Failed to parse dir entry")?;
 
                 let files_path = trash.files_dir().join(&info.trash_filename);
@@ -116,7 +116,7 @@ impl UnifiedTrash {
     pub fn put(&self, input_file: &Path, follow_links: bool) -> anyhow::Result<()> {
         let deleted_at = chrono::Local::now().naive_local();
 
-        let input_file_meta = fs::symlink_metadata(&input_file)
+        let input_file_meta = fs::symlink_metadata(input_file)
             .context(format!("Failed stat file: {}", input_file.display()))?;
 
         let original_filepath = if follow_links {
@@ -124,10 +124,10 @@ impl UnifiedTrash {
                 .canonicalize()
                 .context("Failed to resolve path path")?
         } else {
-            lexical_absolute(&input_file).context("Failed to build lexical absolute path")?
+            lexical_absolute(input_file).context("Failed to build lexical absolute path")?
         };
 
-        if is_sys_path(&input_file) {
+        if is_sys_path(input_file) {
             anyhow::bail!(
                 "Trashing in system path {} is not supported",
                 input_file.display()
@@ -225,7 +225,7 @@ impl UnifiedTrash {
                     .context("Failed to write to trash")?;
             } else {
                 let device_root =
-                    find_fs_root(&input_file).context("Failed to find mount point")?;
+                    find_fs_root(input_file).context("Failed to find mount point")?;
 
                 let fs_root_meta = fs::metadata(&device_root).context("Failed to stat mount")?;
                 let uid = unsafe { libc::getuid() };
@@ -331,7 +331,7 @@ impl UnifiedTrash {
             fs::remove_dir_all(&files_path).context("Failed to remove directory")?;
         }
 
-        fs::remove_file(&info_path).context("Failed to remove trashinfo file")?;
+        fs::remove_file(info_path).context("Failed to remove trashinfo file")?;
 
         Ok(del.original_filepath.clone())
     }
@@ -353,20 +353,16 @@ impl UnifiedTrash {
             0 => anyhow::bail!("No files match"),
             1 => {
                 let del = &matching[0];
-                if del.original_filepath.exists() {
-                    if !exists_callback(&del) {
-                        anyhow::bail!("Aborted by user");
-                    }
+                if del.original_filepath.exists() && !exists_callback(del) {
+                    anyhow::bail!("Aborted by user");
                 }
                 &matching[0]
             }
             // we only call the matched callback if more than one file matched
             _ => {
                 let del = matched_callback(&matching);
-                if del.original_filepath.exists() {
-                    if !exists_callback(&del) {
-                        anyhow::bail!("Aborted by user");
-                    }
+                if del.original_filepath.exists() && !exists_callback(del) {
+                    anyhow::bail!("Aborted by user");
                 }
                 del
             }

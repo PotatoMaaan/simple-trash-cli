@@ -16,7 +16,7 @@ fn test_trash_list() {
     let gio_output = String::from_utf8(gio_output).unwrap();
     let mut gio_output = gio_output
         .lines()
-        .map(|x| x.split("\t").skip(1).next().unwrap())
+        .map(|x| x.split('\t').nth(1).unwrap())
         .map(PathBuf::from)
         .collect::<Vec<_>>();
 
@@ -32,7 +32,7 @@ fn test_trash_list() {
 
     let mut difference = vec![];
     for i in &our_output {
-        if !gio_output.contains(&i) {
+        if !gio_output.contains(i) {
             difference.push(i);
         }
     }
