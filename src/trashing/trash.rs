@@ -20,7 +20,6 @@ pub struct Trash {
 }
 
 impl Trash {
-    #[must_use]
     /// Gets or creates a trash at the given location. Also ensures that $tash/files and $trash/info exist
     pub fn new_with_ensure(
         path: PathBuf,
@@ -41,7 +40,6 @@ impl Trash {
         })
     }
 
-    #[must_use]
     pub fn write_trashinfo(&self, info: &Trashinfo) -> anyhow::Result<()> {
         assert_eq!(info.trash, self);
 
@@ -94,7 +92,6 @@ impl Trash {
     }
 
     /// Panics if /proc/mounts has unexpected format.
-    #[must_use]
     pub fn get_trash_dirs_from_mounts(uid: u32) -> anyhow::Result<Vec<Trash>> {
         let top_dirs = list_mounts().context("Failed to list mounts")?;
 

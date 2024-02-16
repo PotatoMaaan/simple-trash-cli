@@ -94,7 +94,7 @@ fn lexical_absolute(p: &Path) -> std::io::Result<PathBuf> {
             Component::ParentDir => {
                 absolute.pop();
             }
-            component @ _ => absolute.push(component.as_os_str()),
+            component => absolute.push(component.as_os_str()),
         }
     }
     Ok(absolute)
