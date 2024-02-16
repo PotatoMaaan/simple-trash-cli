@@ -8,5 +8,7 @@ pub fn orphaned(
         .remove_orphaned()
         .context("Failed to remove orphaned trashinfo files")?;
 
+    println!("Removed orphaned trashinfo files");
+
     Ok(())
 }

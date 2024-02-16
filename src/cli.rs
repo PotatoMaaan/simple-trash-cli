@@ -7,10 +7,16 @@ use std::path::PathBuf;
 /// Some Subcommands show an ID column, this ID can be used to{n}
 /// uniquely identify files even if the filename contains otherwise unprintable bytes.{n}{n}
 /// This program supports being called through the following names to directly call the subcommand:{n}{n}
-/// trash       -> trash put{n}
-/// trash-put   -> trash put{n}
-/// trash-list  -> trash list{n}
-/// trash-empty -> trash empty{n}
+/// trash         -> trash put{n}
+/// trash-put     -> trash put{n}
+/// trash-list    -> trash list{n}
+/// trash-empty   -> trash empty{n}
+/// trash-restore -> trash restore{n}
+/// trash-rm      -> trash remove{n}{n}
+/// To remove a file whose name starts with a '-', for example '-foo',
+/// use one of these commands:{n}
+/// trash-put -- -foo{n}
+/// trash-put ./-foo
 pub struct RootArgs {
     #[command(subcommand)]
     pub subcommand: SubCmd,
@@ -20,6 +26,7 @@ pub struct RootArgs {
 pub enum SubCmd {
     Put(PutArgs),
     List(ListArgs),
+    ListTrashes(ListTrashesArgs),
     Empty(EmptyArgs),
     RemoveOrphaned(RemoveOrphanedArgs),
     Restore(RestoreArgs),
@@ -27,18 +34,26 @@ pub enum SubCmd {
 }
 
 #[derive(Debug, Clone, Parser)]
-/// Put files into the trash
+/// Put files into the trash, does NOT follow symlinks
 pub struct PutArgs {
-    /// One or more file(s) to trash
+    /// One or more files to trash
     pub files: Vec<PathBuf>,
 
     /// Continue on errors (errors will still be logged to stderr)
     #[arg(short, long)]
     pub force: bool,
 
+    /// Follow symlinks (you probably don't want this)
+    #[arg(short = 'l', long)]
+    pub follow_symlinks: bool,
+
     /// Does nothing, exists for compadibility with rm
     #[arg(short, long)]
     pub recursive: bool,
+
+    /// Does nothing, exists for compadibility with rm
+    #[arg(short, long)]
+    pub directory: bool,
 }
 
 /// List trashed files
@@ -60,6 +75,10 @@ pub struct ListArgs {
     #[arg(long, value_enum, default_value_t = Sorting::OriginalPath)]
     pub sort: Sorting,
 }
+
+/// List available trashcans on the system
+#[derive(Debug, Clone, Parser)]
+pub struct ListTrashesArgs {}
 
 /// Empty the trash
 #[derive(Debug, Clone, Parser)]

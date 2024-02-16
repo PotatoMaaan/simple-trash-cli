@@ -36,6 +36,10 @@ fn main() -> anyhow::Result<()> {
             let args = cli::PutArgs::parse();
             commands::put::put(args, trash)?;
         }
+        "trash-put" => {
+            let args = cli::PutArgs::parse();
+            commands::put::put(args, trash)?;
+        }
         "trash-list" => {
             let args = cli::ListArgs::parse();
             commands::list::list(args, trash)?;
@@ -48,7 +52,7 @@ fn main() -> anyhow::Result<()> {
             let args = cli::RestoreArgs::parse();
             commands::restore::restore(args, trash)?;
         }
-        "trash-remove" => {
+        "trash-rm" => {
             let args = cli::RemoveArgs::parse();
             commands::remove::remove(args, trash)?;
         }
@@ -61,6 +65,9 @@ fn main() -> anyhow::Result<()> {
                 cli::SubCmd::RemoveOrphaned(args) => commands::orphaned::orphaned(args, trash)?,
                 cli::SubCmd::Restore(args) => commands::restore::restore(args, trash)?,
                 cli::SubCmd::Remove(args) => commands::remove::remove(args, trash)?,
+                cli::SubCmd::ListTrashes(args) => {
+                    commands::list_trashes::list_trashes(args, trash)?
+                }
             }
         }
     };

@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub fn restore(args: crate::cli::RestoreArgs, trash: crate::UnifiedTrash) -> anyhow::Result<()> {
-    trash
+    let restored = trash
         .restore(
             |info| {
                 let hash = id_from_bytes(info.original_filepath.as_os_str().as_bytes());
@@ -29,7 +29,7 @@ pub fn restore(args: crate::cli::RestoreArgs, trash: crate::UnifiedTrash) -> any
                 }
                 table(&collector, ["Index", "File", "Deleted At"]);
                 println!();
-                let res: usize = ask(&format!("Choose one [{:?}]: ", 0..matched.len()))
+                let res: usize = ask(&format!("Choose one [{:?}]: ", 0..matched.len() - 1))
                     .parse()
                     .unwrap_or_else(|e| {
                         error!("Invalid number: {}", e);
@@ -59,7 +59,7 @@ pub fn restore(args: crate::cli::RestoreArgs, trash: crate::UnifiedTrash) -> any
         )
         .context("Failed to restore form trash")?;
 
-    println!("Restored {}", args.id_or_path);
+    println!("Restored {}", restored.display());
 
     Ok(())
 }

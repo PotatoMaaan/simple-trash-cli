@@ -4,7 +4,7 @@ use std::{
     ffi::OsStr,
     fs,
     os::unix::{ffi::OsStrExt, fs::MetadataExt},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 mod trash;
@@ -80,6 +80,24 @@ pub fn find_home_trash() -> anyhow::Result<Trash> {
         true,
         false,
     )
+}
+
+fn lexical_absolute(p: &Path) -> std::io::Result<PathBuf> {
+    let mut absolute = if p.is_absolute() {
+        PathBuf::new()
+    } else {
+        std::env::current_dir()?
+    };
+    for component in p.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                absolute.pop();
+            }
+            component @ _ => absolute.push(component.as_os_str()),
+        }
+    }
+    Ok(absolute)
 }
 
 #[test]

@@ -1,16 +1,18 @@
-use std::process::exit;
-
+use crate::{commands::ask, table::table, trashing::UnifiedTrash};
 use anyhow::Context;
 use log::error;
+use std::{os::unix::ffi::OsStrExt, path::PathBuf, process::exit};
 
-use crate::{commands::ask, table::table, trashing::UnifiedTrash};
+use super::id_from_bytes;
 
 pub fn remove(args: crate::cli::RemoveArgs, trash: UnifiedTrash) -> anyhow::Result<()> {
-    trash
+    let removed = trash
         .remove(
             |trash| {
-                println!("");
-                true
+                let hash = id_from_bytes(trash.original_filepath.as_os_str().as_bytes());
+
+                hash == args.id_or_path
+                    || PathBuf::from(&args.id_or_path) == trash.original_filepath
             },
             |matched| {
                 println!("Multiple files match {}:\n", args.id_or_path);
@@ -26,7 +28,7 @@ pub fn remove(args: crate::cli::RemoveArgs, trash: UnifiedTrash) -> anyhow::Resu
                 table(&collector, ["Index", "File", "Deleted At"]);
                 println!();
 
-                let res: usize = ask(&format!("Choose one [{:?}]: ", 0..matched.len()))
+                let res: usize = ask(&format!("Choose one [{:?}]: ", 0..matched.len() - 1))
                     .parse()
                     .unwrap_or_else(|e| {
                         error!("Invalid number: {}", e);
@@ -41,5 +43,9 @@ pub fn remove(args: crate::cli::RemoveArgs, trash: UnifiedTrash) -> anyhow::Resu
                 }
             },
         )
-        .context("Failed to remove file")
+        .context("Failed to remove file")?;
+
+    println!("Removed {}", removed.display());
+
+    Ok(())
 }

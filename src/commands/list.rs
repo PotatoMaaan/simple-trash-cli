@@ -2,7 +2,7 @@ use crate::{
     cli,
     commands::id_from_bytes,
     table::table,
-    trashing::{Trash, Trashinfo, UnifiedTrash},
+    trashing::{Trashinfo, UnifiedTrash},
 };
 use std::os::unix::ffi::OsStrExt;
 

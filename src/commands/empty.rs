@@ -13,6 +13,8 @@ pub fn empty(args: crate::cli::EmptyArgs, trash: crate::UnifiedTrash) -> anyhow:
         .empty(older_than, args.dry_run)
         .context("Failed to empty trash")?;
 
-    println!("Emptied trash!");
+    if !args.dry_run {
+        println!("Emptied trash!");
+    }
     Ok(())
 }

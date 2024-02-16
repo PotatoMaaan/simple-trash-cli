@@ -11,7 +11,7 @@ use std::{
 use crate::trashing::{find_fs_root, is_sys_path, list_mounts};
 
 use super::{
-    find_home_trash,
+    find_home_trash, lexical_absolute,
     trash::Trash,
     trashinfo::{self, Trashinfo},
 };
@@ -40,6 +40,10 @@ impl UnifiedTrash {
             trashes,
             home_trash,
         })
+    }
+
+    pub fn list_trashes(&self) -> &[Trash] {
+        &self.trashes
     }
 
     /// Removes any orphaned trashinfo files, i.e `.trashinfo` files that don't have a
@@ -82,16 +86,24 @@ impl UnifiedTrash {
                 let info = trashinfo::parse_trashinfo(&info.path(), &trash)
                     .context("Failed to parse dir entry")?;
 
-                if !trash.files_dir().join(&info.trash_filename).exists() {
-                    warn!(
-                        "Orphaned trashinfo file: {}",
-                        trash
-                            .files_dir()
-                            .join(&info.trash_filename_trashinfo)
-                            .display()
-                    );
-                    continue;
-                }
+                let files_path = trash.files_dir().join(&info.trash_filename);
+
+                match fs::symlink_metadata(&files_path) {
+                    Ok(v) => v,
+                    Err(e) => match e.kind() {
+                        std::io::ErrorKind::NotFound => {
+                            warn!(
+                                "Orphaned trashinfo file: {}",
+                                trash
+                                    .info_dir()
+                                    .join(&info.trash_filename_trashinfo)
+                                    .display()
+                            );
+                            continue;
+                        }
+                        _ => anyhow::bail!("Failed to stat {}", files_path.display()),
+                    },
+                };
 
                 parsed.push(info);
             }
@@ -101,15 +113,19 @@ impl UnifiedTrash {
     }
 
     /// Attempts to trash the `input_file`, creating a new trashcan on the device if needed.
-    pub fn put(&self, input_file: &Path) -> anyhow::Result<()> {
+    pub fn put(&self, input_file: &Path, follow_links: bool) -> anyhow::Result<()> {
         let deleted_at = chrono::Local::now().naive_local();
 
-        let input_file_meta = fs::metadata(&input_file)
+        let input_file_meta = fs::symlink_metadata(&input_file)
             .context(format!("Failed stat file: {}", input_file.display()))?;
 
-        let original_filepath = input_file
-            .canonicalize()
-            .context("Failed to resolve path")?;
+        let original_filepath = if follow_links {
+            input_file
+                .canonicalize()
+                .context("Failed to resolve path path")?
+        } else {
+            lexical_absolute(&input_file).context("Failed to build lexical absolute path")?
+        };
 
         if is_sys_path(&input_file) {
             anyhow::bail!(
@@ -290,11 +306,12 @@ impl UnifiedTrash {
         Ok(())
     }
 
+    /// Permanently removes a file from the trash, returning the original path of the removed file
     pub fn remove(
         &self,
         filter_predicate: impl for<'a> Fn(&Trashinfo<'a>) -> bool,
         matched_callback: impl for<'a> Fn(&'a [Trashinfo<'a>]) -> &'a Trashinfo,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<PathBuf> {
         let trashed_files = self.list().context("Failed to list trashed files")?;
         let matching = trashed_files
             .into_iter()
@@ -319,24 +336,23 @@ impl UnifiedTrash {
 
         fs::remove_file(&info_path).context("Failed to remove trashinfo file")?;
 
-        Ok(())
+        Ok(del.original_filepath.clone())
     }
 
-    /// Restores a file to it's original location. The callbacks are used to handle
-    /// cases where files already exist etc.
+    /// Restores a file to it's original location, returning the original path of the restored file
     pub fn restore(
         &self,
         filter_predicate: impl for<'a> Fn(&Trashinfo<'a>) -> bool,
         matched_callback: impl for<'a> Fn(&'a [Trashinfo<'a>]) -> &'a Trashinfo,
         exists_callback: impl for<'a> Fn(&Trashinfo<'a>) -> bool,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<PathBuf> {
         let trashed_files = self.list().context("Failed to list trashed files")?;
         let matching = trashed_files
             .into_iter()
             .filter(filter_predicate)
             .collect::<Vec<_>>();
 
-        match matching.len() {
+        let restore = match matching.len() {
             0 => anyhow::bail!("No files match"),
             1 => {
                 let del = &matching[0];
@@ -345,7 +361,7 @@ impl UnifiedTrash {
                         anyhow::bail!("Aborted by user");
                     }
                 }
-                restore_file(&matching[0])?
+                &matching[0]
             }
             // we only call the matched callback if more than one file matched
             _ => {
@@ -355,26 +371,25 @@ impl UnifiedTrash {
                         anyhow::bail!("Aborted by user");
                     }
                 }
-                restore_file(del)?
+                del
             }
         };
 
-        fn restore_file<'a>(info: &'a Trashinfo) -> anyhow::Result<&'a Trashinfo<'a>> {
-            let files_path = info.trash.files_dir().join(&info.trash_filename);
-            let info_path = info.trash.info_dir().join(&info.trash_filename_trashinfo);
+        let files_path = restore.trash.files_dir().join(&restore.trash_filename);
+        let info_path = restore
+            .trash
+            .info_dir()
+            .join(&restore.trash_filename_trashinfo);
 
-            fs::rename(&files_path, &info.original_filepath)
-                .context(f!("Failed to restore {}", files_path.display()))?;
+        fs::rename(&files_path, &restore.original_filepath)
+            .context(f!("Failed to restore {}", files_path.display()))?;
 
-            // We don't move the file back if this fails, as that might cause some unexpected troubles.
-            fs::remove_file(&info_path).context(f!(
-                "Failed to remove trashinfo file: {}",
-                info_path.display()
-            ))?;
+        // We don't move the file back if this fails, as that might cause some unexpected troubles.
+        fs::remove_file(&info_path).context(f!(
+            "Failed to remove trashinfo file: {}",
+            info_path.display()
+        ))?;
 
-            Ok(info)
-        }
-
-        Ok(())
+        Ok(restore.original_filepath.clone())
     }
 }

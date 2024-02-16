@@ -70,6 +70,7 @@ impl<'a> Trashinfo<'a> {
     ///
     /// ## Important
     /// This method *always* adds the `.trashinfo` extension
+    #[allow(unused)]
     pub fn rename(&mut self, new_name: OsString) {
         dbg!(&self);
         self.trash_filename = new_name.clone();
@@ -80,7 +81,7 @@ impl<'a> Trashinfo<'a> {
     }
 }
 
-/// Attempts to parse a `.trashinfo` fole at the `location`.
+/// Attempts to parse a `.trashinfo` file at the `location`.
 pub fn parse_trashinfo<'a>(location: &Path, trash: &'a Trash) -> anyhow::Result<Trashinfo<'a>> {
     let file = fs::read_to_string(location).context("Failed reading trashinfo file")?;
 
