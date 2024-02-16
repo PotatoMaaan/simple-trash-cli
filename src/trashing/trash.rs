@@ -20,7 +20,7 @@ pub struct Trash {
 }
 
 impl Trash {
-    /// Gets or creates a trash at the given location. Also ensures that $tash/files and $trash/info exist
+    /// Gets or creates a trash at the given location. Also ensures that $trash/files and $trash/info exist
     pub fn new_with_ensure(
         path: PathBuf,
         dev_root: PathBuf,
