@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::trashing::{find_fs_root, is_sys_path, list_mounts};
+use crate::trashing::{find_fs_root, is_sys_path};
 
 use super::{
     find_home_trash, lexical_absolute,
@@ -224,25 +224,22 @@ impl UnifiedTrash {
                     .write_trashinfo(&trashinfo)
                     .context("Failed to write to trash")?;
             } else {
-                // We don't have a trash on this device, so we create one
-                let mounts = list_mounts().context("Failed to list mounts")?;
-                let fs_root = find_fs_root(&input_file).context("Failed to find mount point")?;
+                let device_root =
+                    find_fs_root(&input_file).context("Failed to find mount point")?;
 
-                assert!(mounts.contains(&fs_root), "oh nein");
-
-                let fs_root_meta = fs::metadata(&fs_root).context("Failed to stat mount")?;
+                let fs_root_meta = fs::metadata(&device_root).context("Failed to stat mount")?;
                 let uid = unsafe { libc::getuid() };
                 let trash_name = format!(".Trash-{}", uid);
                 let trash = Trash::new_with_ensure(
-                    fs_root.join(trash_name),
-                    fs_root.clone(),
+                    device_root.join(trash_name),
+                    device_root.clone(),
                     fs_root_meta.dev(),
                     false,
                     false,
                 )
                 .context(format!(
                     "Failed to create trash dir on mount: {}",
-                    &fs_root.display()
+                    &device_root.display()
                 ))?;
 
                 let trashinfo = Trashinfo {

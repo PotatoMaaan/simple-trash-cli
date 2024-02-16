@@ -2,6 +2,8 @@ use crate::trashing::UnifiedTrash;
 use std::{path::PathBuf, process::Command};
 
 #[test]
+// Fails when trash contains any utf-8 chars, as gio just doesn't seem to try to do utf-8
+// and just prints out a hex representation of the bytes
 fn test_trash_list() {
     let trash = UnifiedTrash::new().unwrap();
 

@@ -16,7 +16,13 @@ use std::path::PathBuf;
 /// To remove a file whose name starts with a '-', for example '-foo',
 /// use one of these commands:{n}
 /// trash-put -- -foo{n}
-/// trash-put ./-foo
+/// trash-put ./-foo{n}{n}
+/// You can adjust log verbosity by adjusting the RUST_LOG env var to any of the following:{n}
+///     - trace{n}
+///     - debug{n}
+///     - info{n}
+///     - warn{n}
+///     - error{n}
 pub struct RootArgs {
     #[command(subcommand)]
     pub subcommand: SubCmd,
@@ -34,7 +40,7 @@ pub enum SubCmd {
 }
 
 #[derive(Debug, Clone, Parser)]
-/// Put files into the trash, does NOT follow symlinks
+/// Put files into the trash, does NOT follow symlinks (by default)
 pub struct PutArgs {
     /// One or more files to trash
     pub files: Vec<PathBuf>,
@@ -47,11 +53,11 @@ pub struct PutArgs {
     #[arg(short = 'l', long)]
     pub follow_symlinks: bool,
 
-    /// Does nothing, exists for compadibility with rm
+    /// Does nothing, exists for compatibility with rm
     #[arg(short, long)]
     pub recursive: bool,
 
-    /// Does nothing, exists for compadibility with rm
+    /// Does nothing, exists for compatibility with rm
     #[arg(short, long)]
     pub directory: bool,
 }
@@ -78,7 +84,11 @@ pub struct ListArgs {
 
 /// List available trashcans on the system
 #[derive(Debug, Clone, Parser)]
-pub struct ListTrashesArgs {}
+pub struct ListTrashesArgs {
+    /// Just output columnns seperated by \t (for easy parsing) (2>/dev/null to ignore erros / warnings)
+    #[arg(short, long)]
+    pub simple: bool,
+}
 
 /// Empty the trash
 #[derive(Debug, Clone, Parser)]

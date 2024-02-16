@@ -1,31 +1,31 @@
 use crate::{table::table, trashing::UnifiedTrash};
 
-pub fn list_trashes(_args: crate::cli::ListTrashesArgs, trash: UnifiedTrash) -> anyhow::Result<()> {
+pub fn list_trashes(args: crate::cli::ListTrashesArgs, trash: UnifiedTrash) -> anyhow::Result<()> {
     let trashes = trash.list_trashes();
 
-    let trashes_table = trashes
-        .into_iter()
-        .map(|x| {
-            [
-                x.trash_path.to_string_lossy().to_string(),
-                x.dev_root.to_string_lossy().to_string(),
-                x.device.to_string(),
-                x.is_admin_trash.to_string(),
-                x.is_home_trash.to_string(),
-            ]
-        })
-        .collect::<Vec<_>>();
+    if args.simple {
+        for trash in trashes {
+            println!(
+                "{}\t{}\t{}",
+                trash.trash_path.display(),
+                trash.dev_root.display(),
+                trash.device
+            );
+        }
+    } else {
+        let trashes_table = trashes
+            .iter()
+            .map(|x| {
+                [
+                    x.trash_path.to_string_lossy().to_string(),
+                    x.dev_root.to_string_lossy().to_string(),
+                    x.device.to_string(),
+                ]
+            })
+            .collect::<Vec<_>>();
 
-    table(
-        &trashes_table,
-        [
-            "Path",
-            "Device root",
-            "Device ID",
-            "Is admin created",
-            "Is home trash",
-        ],
-    );
+        table(&trashes_table, ["Path", "Device root", "Device ID"]);
+    }
 
     Ok(())
 }
