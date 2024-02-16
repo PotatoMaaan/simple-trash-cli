@@ -24,7 +24,7 @@ pub fn list_trashes(args: crate::cli::ListTrashesArgs, trash: UnifiedTrash) -> a
             })
             .collect::<Vec<_>>();
 
-        table(&trashes_table, ["Path", "Device root", "Device ID"]);
+        table(&trashes_table, ["Path", "Relative root", "Device ID"]);
     }
 
     Ok(())

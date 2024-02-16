@@ -1,19 +1,13 @@
 # Simple-Trash-Cli
 
-The goal of this project was to build a simpler and faster version of [trash-cli](https://github.com/andreafrancia/trash-cli). The project has as little depencies as possible.
+A simple tool for interacting with the XDG trash, similar to [trash-cli](https://github.com/andreafrancia/trash-cli). The projects aims to be straightforward and well documented.
 
-I tried to be as compliant with [the XDG spec](https://specifications.freedesktop.org/trash-spec/trashspec-latest.html) as reasonably possible, with the exception of top-level trash directores. (might be supported in the future)
+You only need a single, small binary, making this ideal for minimal server setups etc.
+
+I tried to be as compliant with [the XDG spec](https://specifications.freedesktop.org/trash-spec/trashspec-latest.html) as reasonably possible, diverging in some small places where other implementations (notably glib) also do so.
 
 > [!IMPORTANT]
-> I made this mainly for personal use. While you can of course use it yourself, be advised that I cannot guarantee the integrity of your files. Use at your own risk.
-
-### Currently missing features (might come later)
-
-- Invoking subcommands through the binary name directly (eg. calling `trash-restore`)
-- Top-level trash directores
-- Restore multiple files
-- Remove / Restore based on pattern
-- Listing on various repos (eg. AUR)
+> I made this mainly for personal use. While I tried my best to ensure integrity, I cannot guarantee this. Use at your own risk.
 
 # Installation / Building
 
@@ -29,9 +23,11 @@ Now you can run:
 
 ```sh
 cargo build --release #builds an optimized binary
+
+cargo build --release --target x86_64-unknown-linux-musl #(optional) statically links against musl to avoid possible libc version mismatches.
 ```
 
-The binary will be in `target/release`
+You'll find the binary in `target/release`
 
 ### Testing
 
@@ -43,23 +39,43 @@ cargo test
 
 # Usage
 
-Here is a list of available subcommands
+Here are some example commands and their outputs:
 
-| Command | Usage                                              |
-| ------- | -------------------------------------------------- |
-| put     | Put one or more files into the trash               |
-| restore | Restore a file from the trash                      |
-| clear   | Clears the trash (permanent)                       |
-| list    | List all files in the trash                        |
-| remove  | Removes a single file from the trash (permanently) |
+```sh
+$ trash-cli list
 
-# Contributing
+ID         | Deleted at          | Original location
+-----------+---------------------+--------------------------------------------------------------------------
+e93c362f7a | 2024-02-15 16:23:38 | /home/user/Documents/somefile.txt
+fac3d34e15 | 2024-02-12 12:26:05 | /home/user/Downloads/file.zip
+6203242363 | 2024-01-17 18:42:20 | /home/user/Downloads/other file.mp4
+67b927f4b0 | 2024-01-12 11:34:52 | /home/user/Downloads/garbled_filename.mp4
+```
+
+```sh
+$ trash-cli restore  67b927f4b0 #You can restore a file based on this id if the name is garbled or too long
+
+Restored /home/user/Downloads/garbled_filename.mp4
+```
+
+```sh
+$ trash random_file.jpg #calls the binary with the name of the subcommand directly
+
+Trashed /home/user/Downloads/random_file.jpg
+```
+
+```sh
+$ trash-cli list-trashes
+
+Path                                        | Relative root                    | Device ID
+--------------------------------------------+----------------------------------+----------
+/home/user/.local/share/Trash               | /home/user/.local/share          | 66306
+/mnt/extdrive/.Trash/1000                   | /mnt/extdrive                    | 2049
+/home/user/mount/some-smb-share/.Trash-1000 | /home/user/mount/some-smb-share  | 59
+```
+
+Run `trash-cli --help` to see a list of all available commands.
+
+## Reporting bugs
 
 If you find a bug feel free to open an issue.
-
-# Development notes
-
-- All paths shall at no point be treated as a `String`, since Rust strings must always be valid UTF-8 and unix paths can anything but `/` and the null byte (`0x00`). Everywhere where a path or filename is involved, `Path`, `PathBuf` or `OsString` are to be used!
-
-- This program assumes that no files will be trashed or otherwise modified while the program is running (a very short time).
-  One approch to fix this would be advisory locking, but that would require other implementations to play along, and as far as i can tell, neither glib (nautilus) nor trash-cli do any sort of file locking at all. The other would be mandatory locking, but that requires the fs to be mounted with the `mand` option (which is very rarely the case), so this program does not implement any locking.
