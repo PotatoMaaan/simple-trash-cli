@@ -116,15 +116,23 @@ impl UnifiedTrash {
     pub fn put(&self, input_file: &Path, follow_links: bool) -> anyhow::Result<()> {
         let deleted_at = chrono::Local::now().naive_local();
 
-        let input_file_meta = fs::symlink_metadata(input_file)
-            .context(format!("Failed stat file: {}", input_file.display()))?;
-
-        let original_filepath = if follow_links {
-            input_file
+        let (original_filepath, input_file_meta) = if follow_links {
+            let p = input_file
                 .canonicalize()
-                .context("Failed to resolve path path")?
+                .context("Failed to resolve path path")?;
+
+            let m = fs::metadata(input_file)
+                .context(format!("Failed stat file: {}", input_file.display()))?;
+
+            (p, m)
         } else {
-            lexical_absolute(input_file).context("Failed to build lexical absolute path")?
+            let p =
+                lexical_absolute(input_file).context("Failed to build lexical absolute path")?;
+
+            let m = fs::symlink_metadata(input_file)
+                .context(format!("Failed stat file: {}", input_file.display()))?;
+
+            (p, m)
         };
 
         if is_sys_path(input_file) {
@@ -224,8 +232,7 @@ impl UnifiedTrash {
                     .write_trashinfo(&trashinfo)
                     .context("Failed to write to trash")?;
             } else {
-                let device_root =
-                    find_fs_root(input_file).context("Failed to find mount point")?;
+                let device_root = find_fs_root(input_file).context("Failed to find mount point")?;
 
                 let fs_root_meta = fs::metadata(&device_root).context("Failed to stat mount")?;
                 let uid = unsafe { libc::getuid() };
