@@ -13,7 +13,10 @@ I tried to be as compliant with [the XDG spec](https://specifications.freedeskto
 
 ### Pre-compiled
 
-You can grab a pre-compiled binary from the releases or build one yourself (see below)
+You can grab a pre-compiled binary from the releases or build one yourself (see below).
+Two binaries are made available:
+- `x86_64-unknown-linux-gnu`:   Dynamically links to libc, probably fine in most cases
+- `x86_64-unknown-linux-musl`:  Statically links the musl libc, for better portability.
 
 ### Building
 
